@@ -40,9 +40,10 @@ function Search-UnifiedLog
 
     )
 
-    Begin
+    begin
     {
-        $collection = @()
+        #$collection = [System.Collections.ArrayList]@()
+        [System.Array]$collection = $null
         [System.Int16]$totalCount = 0
         [System.Array]$tempResult = $null
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -53,6 +54,7 @@ function Search-UnifiedLog
             SessionCommand = 'ReturnLargeSet'
             ResultSize = $ResultSize
         }
+
         if (-not [System.String]::IsNullOrEmpty($UserIDs))
         {
             $param.Add('UserIds',$UserIDs)
@@ -87,9 +89,12 @@ function Search-UnifiedLog
         }
     }
 
-    Process{
-        Do {
-            Write-Verbose "Start searching..."
+    process
+    {
+        Write-Verbose "Start searching..."
+
+        do
+        {
             $tempResult = Search-UnifiedAuditLog @param
             if ($tempResult)
             {
@@ -101,10 +106,11 @@ function Search-UnifiedLog
                 Write-Verbose 'No records found!'
             }
         }
-        Until( $(if ($tempResult){ $tempResult.ResultIndex[-1] -ge $tempResult.ResultCount[-1]} else { return $true}) )
+        until( $(if ($tempResult){ $tempResult.ResultIndex[-1] -ge $tempResult.ResultCount[-1]} else { return $true}) )
     }
 
-    End{
+    end
+    {
         $collection | Sort-Object CreationDate
         $timer.Stop()
         Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
@@ -157,13 +163,14 @@ function Get-MessageTraceFull
 
     )
 
-    Begin
+    begin
     {
-        $collection = @()
+        $collection = [System.Collections.ArrayList]@()
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         [System.Boolean]$haveMore = $true
         $param = @{}
         [System.Int16]$PageCounter = '0'
+
         if (-not [System.String]::IsNullOrEmpty($EndDate))
         {
             $param.Add('EndDate',$EndDate)
@@ -214,13 +221,16 @@ function Get-MessageTraceFull
         }
         $param.Add('Page',[System.Int16]'1')
     }
-    Process
+
+    process
     {
-        while ($haveMore) {
+        while ($haveMore)
+        {
             $tempResult = $null
             $tempResult = Get-MessageTrace @param
             $collection += $tempResult
             Write-Verbose "TotalCount:$($collection.Count) Page:$($param.Page) Runtime:$($timer.Elapsed.ToString()) ResultCount:$($tempResult.Count)"
+
             if ($tempResult.Count -eq $PageSize)
             {
                 Write-Verbose "Increasing Page number"
@@ -232,7 +242,8 @@ function Get-MessageTraceFull
             }
         }
     }
-    End
+
+    end
     {
         $collection | Sort-Object Received
         $timer.Stop()
@@ -260,13 +271,13 @@ function Get-ManagedFolderAssistantLog
         $Identity
     )
 
-    Begin
+    begin
     {
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
-        $collection = @()
+        $collection = [System.Collections.ArrayList]@()
     }
 
-    Process
+    process
     {
         foreach ($ID in $Identity)
         {
@@ -274,11 +285,11 @@ function Get-ManagedFolderAssistantLog
             $data = New-Object -TypeName PSObject
             $data | add-member -type NoteProperty -Name Identity -Value $ID
             $data | add-member -type NoteProperty -Name Ecl -Value $(([xml](Export-MailboxDiagnosticLogs -Identity $ID -ExtendedProperties).MailboxLog).Properties.MailboxTable.Property | ? name -Like 'elc*')
-            $collection += $data
+            $collection.Add($data) | Out-Null
         }
     }
 
-    End
+    end
     {
         $collection
         $timer.Stop()
@@ -345,12 +356,13 @@ function Get-QuarantineMessageFull
 
     )
 
-    Begin
+    begin
     {
-        $collection = @()
+        $collection = [System.Collections.ArrayList]@()
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         [System.Boolean]$haveMore = $true
         $param = @{}
+
         if (-not [System.String]::IsNullOrEmpty($Direction))
         {
             $param.Add('Direction',$Direction)
@@ -416,12 +428,15 @@ function Get-QuarantineMessageFull
             $param.Add('Type',$Type)
         }
     }
-    Process
+
+    process
     {
-        while ($haveMore) {
+        while ($haveMore)
+        {
             $tempResult = $null
             $tempResult = Get-QuarantineMessage @param
             $collection += $tempResult
+
             Write-Verbose "TotalCount:$($collection.Count) Page:$($param.Page) Runtime:$($timer.Elapsed.ToString()) ResultCount:$($tempResult.Count)"
             if ($tempResult.Count -eq $PageSize)
             {
@@ -434,7 +449,8 @@ function Get-QuarantineMessageFull
             }
         }
     }
-    End
+
+    end
     {
         $collection | Sort-Object Received
         $timer.Stop()
@@ -445,173 +461,172 @@ function Get-QuarantineMessageFull
 
 function Test-ExchangeAuditSetting
 {
-[CmdletBinding()]
-param(
-    [Parameter(
-        ValueFromPipeline=$true,
-        Mandatory=$true,
-        Position=0)]
-    [System.Object[]]
-    $Mailbox,
-
-    [Parameter(
-        Mandatory=$false,
-        Position=1)]
-    [System.String[]]
-    $AuditOwnerDesired = @("Update","MoveToDeletedItems","SoftDelete","HardDelete","MailboxLogin","UpdateFolderPermissions","UpdateInboxRules","UpdateCalendarDelegation"),
-
-    [Parameter(
-        Mandatory=$false,
-        Position=2)]
-    [System.String[]]
-    $AuditDelegateDesired = @("Update","MoveToDeletedItems","SoftDelete","HardDelete","SendAs","SendOnBehalf","Create","UpdateFolderPermissions","UpdateInboxRules")
-)
-
-Begin
-{
-
-    $collection = [System.Collections.ArrayList]@()
-    $toBeProcessed = [System.Collections.ArrayList]@()
-    $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    <#
-        .SYNOPSIS
-            Takes an array of strings and converts each element in the array to
-            all lowercase characters.
+    [CmdletBinding()]
+    param(
+        [Parameter(
+            ValueFromPipeline=$true,
+            Mandatory=$true,
+            Position=0)]
+        [System.Object[]]
+        $Mailbox,
     
-        .PARAMETER Array
-            The array of System.String objects to convert into lowercase strings.
-    #>
-    function Convert-StringArrayToLowerCase
+        [Parameter(
+            Mandatory=$false,
+            Position=1)]
+        [System.String[]]
+        $AuditOwnerDesired = @("Update","MoveToDeletedItems","SoftDelete","HardDelete","MailboxLogin","UpdateFolderPermissions","UpdateInboxRules","UpdateCalendarDelegation"),
+    
+        [Parameter(
+            Mandatory=$false,
+            Position=2)]
+        [System.String[]]
+        $AuditDelegateDesired = @("Update","MoveToDeletedItems","SoftDelete","HardDelete","SendAs","SendOnBehalf","Create","UpdateFolderPermissions","UpdateInboxRules")
+    )
+
+    begin
     {
-        [CmdletBinding()]
-        [OutputType([System.String[]])]
-        param
-        (
-            [Parameter()]
-            [System.String[]]
-            $Array
-        )
-    
-        [System.String[]] $arrayOut = New-Object -TypeName 'System.String[]' -ArgumentList $Array.Count
-    
-        for ($i = 0; $i -lt $Array.Count; $i++)
+
+        $collection = [System.Collections.ArrayList]@()
+        $toBeProcessed = [System.Collections.ArrayList]@()
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        <#
+            .SYNOPSIS
+                Takes an array of strings and converts each element in the array to
+                all lowercase characters.
+
+            .PARAMETER Array
+                The array of System.String objects to convert into lowercase strings.
+        #>
+        function Convert-StringArrayToLowerCase
         {
-            $arrayOut[$i] = $Array[$i].ToLower()
-        }
-    
-        return $arrayOut
-    }
-    
-    <#
-        .SYNOPSIS
-            Returns whether two string arrays have the same contents, where element
-            order doesn't matter.
-    
-        .PARAMETER Array1
-            The first System.String[] object to compare.
-    
-        .PARAMETER Array2
-            The second System.String[] object to compare.
-    
-        .PARAMETER IgnoreCase
-            Specifies that case should be ignored when comparing array contents.
-    #>
-    function Compare-ArrayContent
-    {
-        [CmdletBinding()]
-        [OutputType([System.Boolean])]
-        param
-        (
-            [Parameter()]
-            [System.String[]]
-            $Array1,
-    
-            [Parameter()]
-            [System.String[]]
-            $Array2,
-    
-            [Parameter()]
-            [System.Management.Automation.SwitchParameter]
-            $IgnoreCase
-        )
-    
-        $hasSameContents = $true
-    
-        if ($Array1.Length -ne $Array2.Length)
-        {
-            $hasSameContents = $false
-        }
-        elseif ($Array1.Count -gt 0 -and $Array2.Count -gt 0)
-        {
-            if ($IgnoreCase -eq $true)
+            [CmdletBinding()]
+            [OutputType([System.String[]])]
+            param
+            (
+                [Parameter()]
+                [System.String[]]
+                $Array
+            )
+
+            [System.String[]] $arrayOut = New-Object -TypeName 'System.String[]' -ArgumentList $Array.Count
+
+            for ($i = 0; $i -lt $Array.Count; $i++)
             {
-                $Array1 = Convert-StringArrayToLowerCase -Array $Array1
-                $Array2 = Convert-StringArrayToLowerCase -Array $Array2
+                $arrayOut[$i] = $Array[$i].ToLower()
             }
-    
-            foreach ($str in $Array1)
+
+            return $arrayOut
+        }
+
+        <#
+            .SYNOPSIS
+                Returns whether two string arrays have the same contents, where element
+                order doesn't matter.
+        
+            .PARAMETER Array1
+                The first System.String[] object to compare.
+        
+            .PARAMETER Array2
+                The second System.String[] object to compare.
+        
+            .PARAMETER IgnoreCase
+                Specifies that case should be ignored when comparing array contents.
+        #>
+        function Compare-ArrayContent
+        {
+            [CmdletBinding()]
+            [OutputType([System.Boolean])]
+            param
+            (
+                [Parameter()]
+                [System.String[]]
+                $Array1,
+
+                [Parameter()]
+                [System.String[]]
+                $Array2,
+
+                [Parameter()]
+                [System.Management.Automation.SwitchParameter]
+                $IgnoreCase
+            )
+
+            $hasSameContents = $true
+
+            if ($Array1.Length -ne $Array2.Length)
             {
-                if (!($Array2.Contains($str)))
+                $hasSameContents = $false
+            }
+            elseif ($Array1.Count -gt 0 -and $Array2.Count -gt 0)
+            {
+                if ($IgnoreCase -eq $true)
                 {
-                    $hasSameContents = $false
-                    break
+                    $Array1 = Convert-StringArrayToLowerCase -Array $Array1
+                    $Array2 = Convert-StringArrayToLowerCase -Array $Array2
+                }
+
+                foreach ($str in $Array1)
+                {
+                    if (!($Array2.Contains($str)))
+                    {
+                        $hasSameContents = $false
+                        break
+                    }
                 }
             }
+
+            return $hasSameContents
         }
-    
-        return $hasSameContents
+
+        [System.Int32]$i='1'
+
     }
 
-    [System.Int32]$i='1'
-
-}
-
-Process
-{
-
-    foreach($ID in $Mailbox)
+    process
     {
-        $toBeProcessed.Add($ID) | Out-Null
+
+        foreach($ID in $Mailbox)
+        {
+            $toBeProcessed.Add($ID) | Out-Null
+        }
+
     }
 
-}
+    end{
 
-End{
+        foreach($ID in $toBeProcessed)
+        {
+            Write-Progress -id 1 -Activity "Processing mailbox - $($ID.PrimarySmtpAddress)" -PercentComplete ( $i / $toBeProcessed.count * 100) -Status "Remaining objects: $($toBeProcessed.count - $i)"
 
-    foreach($ID in $toBeProcessed)
-    {
-        Write-Progress -id 1 -Activity "Processing mailbox - $($ID.PrimarySmtpAddress)" -PercentComplete ( $i / $toBeProcessed.count * 100) -Status "Remaining objects: $($toBeProcessed.count - $i)"
-        
-        $data = New-Object -TypeName PSObject
-        $data | add-member -type NoteProperty -Name Mailbox -Value $($ID.PrimarySmtpAddress)
-        #Write-Verbose "Processing $($ID.PrimarySmtpAddress)..."
-        if(-not [System.String]::IsNullOrEmpty($ID.AuditOwner))
-        {
-            $data | add-member -type NoteProperty -Name AuditOwner -Value $(Compare-ArrayContent -Array1 $AuditOwnerDesired -Array2 $ID.AuditOwner -IgnoreCase)
-        }
-        else
-        {
-            $data | add-member -type NoteProperty -Name AuditOwner -Value 'N/A'
+            $data = New-Object -TypeName PSObject
+            $data | add-member -type NoteProperty -Name PrimarySmtpAddress -Value $($ID.PrimarySmtpAddress)
+
+            if(-not [System.String]::IsNullOrEmpty($ID.AuditOwner))
+            {
+                $data | add-member -type NoteProperty -Name AuditOwner -Value $(Compare-ArrayContent -Array1 $AuditOwnerDesired -Array2 $ID.AuditOwner -IgnoreCase)
+            }
+            else
+            {
+                $data | add-member -type NoteProperty -Name AuditOwner -Value 'N/A'
+            }
+
+            if(-not [System.String]::IsNullOrEmpty($ID.AuditDelegate))
+            {
+                $data | add-member -type NoteProperty -Name AuditDelegate -Value $(Compare-ArrayContent -Array1 $AuditOwnerDesired -Array2 $ID.AuditOwner -IgnoreCase)
+            }
+            else
+            {
+                $data | add-member -type NoteProperty -Name AuditDelegate -Value 'N/A'
+            }
+
+            $collection.Add($data) | Out-Null
+            $i++
         }
 
-        if(-not [System.String]::IsNullOrEmpty($ID.AuditDelegate))
-        {
-            $data | add-member -type NoteProperty -Name AuditDelegate -Value $(Compare-ArrayContent -Array1 $AuditOwnerDesired -Array2 $ID.AuditOwner -IgnoreCase)
-        }
-        else
-        {
-            $data | add-member -type NoteProperty -Name AuditDelegate -Value 'N/A'
-        }
-
-        $collection.Add($data) | Out-Null
-        $i++
+        Write-Progress -Activity "Processing mailbox - $($ID.PrimarySmtpAddress)" -Status "Ready" -Completed
+        $timer.Stop()
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
+        $collection
     }
-
-    Write-Progress -Activity "Processing mailbox - $($ID.PrimarySmtpAddress)" -Status "Ready" -Completed
-
-    $timer.Stop()
-    Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
-    $collection
-}
 
 }
