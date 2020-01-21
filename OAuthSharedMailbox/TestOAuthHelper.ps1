@@ -598,7 +598,8 @@ function Get-CalendarEvents
 
                     $Service.HttpHeaders.Add("X-AnchorMailbox", $Mailbox)
 
-                    $calFolder = [Microsoft.Exchange.WebServices.Data.CalendarFolder]::Bind($Service,[Microsoft.Exchange.WebServices.Data.WellKnownFolderName]::Calendar)
+                    $calFolderID = new-object Microsoft.Exchange.WebServices.Data.FolderId([Microsoft.Exchange.WebServices.Data.WellKnownFolderName]::Calendar,$Mailbox) 
+                    $calFolder = [Microsoft.Exchange.WebServices.Data.Folder]::Bind($Service,$calFolderID)
                     $ItemPropset= new-object Microsoft.Exchange.WebServices.Data.PropertySet([Microsoft.Exchange.WebServices.Data.BasePropertySet]::FirstClassProperties)
                     $ItemView =  New-Object Microsoft.Exchange.WebServices.Data.ItemView(20,0,[Microsoft.Exchange.WebServices.Data.OffsetBasePoint]::Beginning)
                     $ItemView.PropertySet = $ItemPropset
