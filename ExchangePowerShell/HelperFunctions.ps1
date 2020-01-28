@@ -630,3 +630,36 @@ function Test-ExchangeAuditSetting
     }
 
 }
+
+function Get-EASDetails {
+    param(
+    [parameter( Mandatory=$false, ParameterSetName="Mailbox")]
+    [parameter( Position=0)]
+    [string]$Mailbox,
+    [parameter( Mandatory=$false, ParameterSetName="DeviceID")]
+    [parameter( Position=1)]
+    [string]$DeviceID
+    )
+	begin
+	{
+		if ($Mailbox)
+		{
+			$command = 'Get-EXOMobileDeviceStatistics -Mailbox ' + $Mailbox
+			$processingObject = $Mailbox
+		}
+		else
+		{
+			$command = 'Get-MobileDevice -Filter {DeviceID -eq "' + $DeviceID + '"} | Sort-Object | ForEach{Get-MobileDeviceStatistics $_.identity }'
+			$processingObject = $DeviceID
+		}
+	}
+    process {
+		try {
+			Write-Warning "Working on $($processingObject)..."
+			Invoke-Expression $command  | Sort-Object LastSuccessSync | Select-Object DeviceModel,DeviceOS,DeviceID,DeviceUserAgent,LastSyncAttemptTime,LastSuccessSync,DeviceAccessState
+		}
+		catch{
+			$_.Exception
+		}
+    }
+}
