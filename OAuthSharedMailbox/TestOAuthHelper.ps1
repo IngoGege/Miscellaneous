@@ -186,7 +186,8 @@ function Test-SendMail
                                 "address": ""
                             }
                             }
-                        }
+                        },
+                        "saveToSentItems": "true"
                     }'
 
                     $message = $message | ConvertFrom-Json
@@ -654,6 +655,185 @@ function Get-CalendarEvents
         $timer.Stop()
         Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
         $objcol
+    }
+
+}
+
+function Create-CalendarEvent
+{
+    [CmdletBinding()]
+    param(
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$true,
+            Position=0)]
+        [ValidateNotNull()]
+        [Alias('PrimarySmtpAddress')]
+        [System.String[]]
+        $EmailAddress,
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$true,
+            Position=1)]
+        [ValidateNotNull()]
+        [System.String]
+        $Attendee,
+
+        [Parameter(
+            ValueFromPipeline=$true,
+            Mandatory=$true,
+            Position=2)]
+        [ValidateNotNull()]
+        [System.String]
+        $AccessToken,
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=3)]
+        [ValidateNotNull()]
+        [System.String]
+        $TimeZone = 'W. Europe Standard Time',
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=4)]
+        [ValidateNotNull()]
+        [System.DateTime]
+        $StartDate = $((Get-Date).AddHours(1)),
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=5)]
+        [ValidateNotNull()]
+        [System.DateTime]
+        $EndDate = $((Get-Date).AddHours(1)),
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=6)]
+        [ValidateNotNull()]
+        [System.String]
+        $Subject = "Test Event $(Get-Date -Format s)",
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=6)]
+        [ValidateNotNull()]
+        [System.String]
+        $Content = "Event created via MS Graph.",
+
+        [Parameter(
+            Mandatory=$false,
+            Position=6)]
+        [System.Management.Automation.SwitchParameter]
+        $UseOutlook
+
+    )
+
+    begin
+    {
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        $objcol = [System.Collections.ArrayList]@()
+        if($UseOutlook)
+        {
+            $baseURI = 'https://outlook.office.com/api/v2.0/users/'
+        }
+        else
+        {
+            $baseURI = 'https://graph.microsoft.com/v1.0/users/'
+        }
+
+        Write-Verbose "BaseURI:$($baseURI)"
+
+    }
+
+    process
+    {
+        foreach ($Mailbox in $EmailAddress)
+        {
+            try
+            {
+
+                # create parameterset
+                $global:event = @"
+                    {
+                    "subject": "$($Subject)",
+                    "body": {
+                        "contentType": "HTML",
+                        "content": "$($Content)"
+                    },
+                    "start": {
+                        "dateTime": "$(Get-Date $StartDate -Format s)",
+                        "timeZone": "$($TimeZone)"
+                    },
+                    "end": {
+                        "dateTime": "$(Get-Date $EndDate -Format s)",
+                        "timeZone": "$($TimeZone)"
+                    },
+                    "location":{
+                        "displayName":"TBD"
+                    },
+                    "attendees": [
+                        {
+                        "emailAddress": {
+                            "address":"$($Attendee)",
+                            "name":"bla"
+                        },
+                        "type": "required"
+                        }
+                    ]
+                    }
+"@
+
+                $param = @{
+                    Method = 'Post'
+                    Uri = $baseURI + $mailbox + '/calendar/events'
+                    Headers = @{
+                        'Authorization' = "$($AccessToken)";
+                        'X-AnchorMailbox' = $($mailbox);
+                        'Content-type' = 'application/json'
+                        }
+                }
+
+                $result = Invoke-RestMethod @param -Body $event
+
+            }
+            catch
+            {
+                #create object
+                $returnValue = New-Object -TypeName PSObject
+                #get all properties from last error
+                $ErrorProperties = $Error[0] | Get-Member -MemberType Property
+                #add existing properties to object
+                foreach ($Property in $ErrorProperties)
+                {
+                    if ($Property.Name -eq 'InvocationInfo')
+                    {
+                        $returnValue | Add-Member -Type NoteProperty -Name 'InvocationInfo' -Value $($Error[0].InvocationInfo.PositionMessage)
+                    }
+                    else
+                    {
+                        $returnValue | Add-Member -Type NoteProperty -Name $($Property.Name) -Value $($Error[0].$($Property.Name))
+                    }
+                }
+                #return object
+                $returnValue
+            }
+
+        }
+    }
+
+    end
+    {
+        $timer.Stop()
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
+        $result
     }
 
 }
