@@ -665,7 +665,7 @@ function Create-CalendarEvent
     param(
         [Parameter(
             ValueFromPipeline=$false,
-            Mandatory=$true,
+            Mandatory=$false,
             Position=0)]
         [ValidateNotNull()]
         [Alias('PrimarySmtpAddress')]
@@ -732,7 +732,13 @@ function Create-CalendarEvent
             Mandatory=$false,
             Position=6)]
         [System.Management.Automation.SwitchParameter]
-        $UseOutlook
+        $UseOutlook,
+
+        [Parameter(
+            Mandatory=$false,
+            Position=7)]
+        [System.String]
+        $O365GroupID
 
     )
 
@@ -740,13 +746,22 @@ function Create-CalendarEvent
     {
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         $objcol = [System.Collections.ArrayList]@()
-        if($UseOutlook)
+        if (-not [System.String]::IsNullOrEmpty($O365GroupID) )
         {
-            $baseURI = 'https://outlook.office.com/api/v2.0/users/'
+            $objectType = 'groups'
+            $EmailAddress = $O365GroupID
         }
         else
         {
-            $baseURI = 'https://graph.microsoft.com/v1.0/users/'
+            $objectType = 'users'
+        }
+        if($UseOutlook)
+        {
+            $baseURI = "https://outlook.office.com/api/v2.0/$objectType/"
+        }
+        else
+        {
+            $baseURI = "https://graph.microsoft.com/v1.0/$objectType/"
         }
 
         Write-Verbose "BaseURI:$($baseURI)"
@@ -837,3 +852,156 @@ function Create-CalendarEvent
     }
 
 }
+
+function Create-OnlineMeeting
+{
+    [CmdletBinding()]
+    param(
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=0)]
+        [ValidateNotNull()]
+        [System.String]
+        $OrganizerAddress,
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=0)]
+        [ValidateNotNull()]
+        [System.String[]]
+        $Attendee,
+
+        [Parameter(
+            ValueFromPipeline=$true,
+            Mandatory=$true,
+            Position=1)]
+        [ValidateNotNull()]
+        [System.String]
+        $AccessToken,
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=2)]
+        [ValidateNotNull()]
+        [System.String]
+        $TimeZone = 'W. Europe Standard Time',
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=3)]
+        [ValidateNotNull()]
+        [System.DateTime]
+        $StartDate = $((Get-Date).AddHours(1)),
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=4)]
+        [ValidateNotNull()]
+        [System.DateTime]
+        $EndDate = $((Get-Date).AddHours(1)),
+
+        [Parameter(
+            ValueFromPipeline=$false,
+            Mandatory=$false,
+            Position=5)]
+        [ValidateNotNull()]
+        [System.String]
+        $Subject = "Test Event $(Get-Date -Format s)"
+
+    )
+
+    begin
+    {
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        $objcol = [System.Collections.ArrayList]@()
+
+    }
+
+    process
+    {
+        foreach ($Organizer in $OrganizerAddress)
+        {
+            try
+            {
+
+                # create parameterset
+                $global:OnlineMeeting = @"
+                    {
+                        "startDateTime":"$(Get-Date $StartDate -Format o)",
+                        "endDateTime":"$(Get-Date $EndDate -Format o)",
+                        "subject":"$($Subject)",
+                        "participants":{ 
+                            "organizer":{"upn":"$($Organizer)"},
+                            "attendees":[
+"@
+                $i = 0
+                Write-Verbose $Attendee.Count
+                foreach ($A in $Attendee)
+                {
+                    $i++
+                    Write-Verbose "Adding attendee:$($A)"
+                    $global:OnlineMeeting += @"
+                    {"upn":"$A"}
+"@
+                    if ($i -lt $Attendee.Count)
+                    {
+                        $global:OnlineMeeting += ","
+                    }
+                }
+                $global:OnlineMeeting += @"
+                        ]
+                    }
+                }
+"@
+
+                $param = @{
+                    Method = 'Post'
+                    Uri = 'https://graph.microsoft.com/v1.0/me/onlineMeetings'
+                    Headers = @{
+                        'Authorization' = "$($AccessToken)";
+                        'Content-type' = 'application/json'
+                        }
+                }
+
+                $result = Invoke-RestMethod @param -Body $OnlineMeeting
+
+            }
+            catch
+            {
+                #create object
+                $returnValue = New-Object -TypeName PSObject
+                #get all properties from last error
+                $ErrorProperties = $Error[0] | Get-Member -MemberType Property
+                #add existing properties to object
+                foreach ($Property in $ErrorProperties)
+                {
+                    if ($Property.Name -eq 'InvocationInfo')
+                    {
+                        $returnValue | Add-Member -Type NoteProperty -Name 'InvocationInfo' -Value $($Error[0].InvocationInfo.PositionMessage)
+                    }
+                    else
+                    {
+                        $returnValue | Add-Member -Type NoteProperty -Name $($Property.Name) -Value $($Error[0].$($Property.Name))
+                    }
+                }
+                #return object
+                $returnValue
+            }
+
+        }
+    }
+
+    end
+    {
+        $timer.Stop()
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
+        $result
+    }
+
+}
+

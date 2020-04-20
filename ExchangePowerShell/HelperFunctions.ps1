@@ -474,13 +474,13 @@ function Test-ExchangeAuditSetting
             Mandatory=$false,
             Position=1)]
         [System.String[]]
-        $AuditOwnerDesired = @("Update","MoveToDeletedItems","SoftDelete","HardDelete","MailboxLogin","UpdateFolderPermissions","UpdateInboxRules","UpdateCalendarDelegation"),
+        $AuditOwnerDesired = @("Update","MoveToDeletedItems","SoftDelete","HardDelete","Create","UpdateFolderPermissions","UpdateInboxRules","UpdateCalendarDelegation","MailItemsAccessed","MailboxLogin"),
     
         [Parameter(
             Mandatory=$false,
             Position=2)]
         [System.String[]]
-        $AuditDelegateDesired = @("Update","MoveToDeletedItems","SoftDelete","HardDelete","SendAs","SendOnBehalf","Create","UpdateFolderPermissions","UpdateInboxRules")
+        $AuditDelegateDesired = @("Update","MoveToDeletedItems","SoftDelete","HardDelete","SendAs","SendOnBehalf","Create","UpdateFolderPermissions","UpdateInboxRules","MailItemsAccessed","FolderBind")
     )
 
     begin
