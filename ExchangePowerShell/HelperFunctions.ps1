@@ -666,3 +666,66 @@ function Get-EASDetails {
         }
     }
 }
+
+function Enable-PIMRole
+{
+    [CmdletBinding()]
+    Param
+    (
+        [System.String]
+        $UserPrincipalName,
+
+        [System.String]
+        [ValidateNotNullOrEmpty()]
+        [ValidateSet("Search Administrator","External ID User Flow Attribute Administrator","Guest User","Power Platform Administrator","Cloud Application Administrator","Compliance Administrator","Security Administrator","Exchange Service Administrator","Restricted Guest User","Device Managers","Office Apps Administrator","Desktop Analytics Administrator","Intune Service Administrator","B2C IEF Policy Administrator","CRM Service Administrator","Reports Reader","Partner Tier1 Support","License Administrator","Customer LockBox Access Approver","Security Reader","Security Operator","Global Administrator","Printer Administrator","Teams Service Administrator","External ID User Flow Administrator","Helpdesk Administrator","Azure Information Protection Administrator","Kaizala Administrator","Lync Service Administrator","Cloud Device Administrator","Message Center Reader","Privileged Authentication Administrator","Search Editor","Directory Readers","Hybrid Identity Administrator","Directory Writers","Guest Inviter","Password Administrator","Application Administrator","Device Join","Device Administrators","User","Power BI Service Administrator","B2C IEF Keyset Administrator","Message Center Privacy Reader","Billing Administrator","Conditional Access Administrator","Teams Communications Administrator","External Identity Provider Administrator","Workplace Device Join","Authentication Administrator","Application Developer","Directory Synchronization Accounts","Network Administrator","Device Users","Partner Tier2 Support","Azure DevOps Administrator","Compliance Data Administrator","Privileged Role Administrator","Printer Technician","Service Support Administrator","SharePoint Service Administrator","Global Reader","Teams Communications Support Engineer","Teams Communications Support Specialist","Groups Administrator","User Account Administrator")]
+        $Role,
+
+        [System.Int16]
+        [ValidateRange(1,10)]
+        $Hours = '10',
+
+        [System.String]
+        [ValidateNotNullOrEmpty()]
+        $Reason = 'Daily work'
+    )
+
+    begin
+    {
+        $Error.Clear()
+        Write-Verbose 'Remove existing "old" AzureAD module and load AzureADPreview'
+        Remove-Module Azuread -Force -ErrorAction silentlycontinue
+        Import-Module AzureADPreview -Verbose:$false
+    }
+
+    process
+    {
+
+        try {
+            $AAD=Connect-AzureAD -AccountId $UserPrincipalname
+            $resource = Get-AzureADMSPrivilegedResource -ProviderId AadRoles
+            $roleDefinition = Get-AzureADMSPrivilegedRoleDefinition -ProviderId AadRoles -ResourceId $resource.Id -Filter "DisplayName eq '$Role'"
+            $subject = Get-AzureADUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
+            $schedule = New-Object Microsoft.Open.MSGraph.Model.AzureADMSPrivilegedSchedule
+            $schedule.Type = "Once"
+            $schedule.Duration = "PT$($Hours)H"
+
+            $MyRole = @{
+                ProviderId = 'aadRoles'
+                ResourceId = $resource.Id
+                SubjectID = $subject.ObjectId
+                AssignmentState = 'Active'
+                Type = 'UserAdd'
+                Reason =$Reason
+                RoleDefinitionId = $roleDefinition.Id
+                Schedule = $schedule
+                ErrorAction = 'Stop'
+            }
+
+            Open-AzureADMSPrivilegedRoleAssignmentRequest @Myrole
+
+        }
+        catch {
+            $Error[0].Exception
+        }
+    }
+}
