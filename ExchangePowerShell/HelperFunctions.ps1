@@ -1,4 +1,4 @@
-function Search-UnifiedLog
+function global:Search-UnifiedLog
 {
     [CmdletBinding()]
     param(
@@ -117,7 +117,7 @@ function Search-UnifiedLog
     }
 }
 
-function Get-MessageTraceFull
+function global:Get-MessageTraceFull
 {
     [CmdletBinding()]
     param(
@@ -252,7 +252,7 @@ function Get-MessageTraceFull
 
 }
 
-function Prompt
+function global:Prompt
 {
     $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " Connected to EXO as $((Get-PSSession ).Runspace.ConnectionInfo.Credential.UserName)"
     Write-Host '[' -NoNewline
@@ -263,7 +263,7 @@ function Prompt
 }
 Prompt
 
-function Get-ManagedFolderAssistantLog
+function global:Get-ManagedFolderAssistantLog
 {
     [CmdletBinding()]
     param(
@@ -297,7 +297,7 @@ function Get-ManagedFolderAssistantLog
     }
 }
 
-function Get-QuarantineMessageFull
+function global:Get-QuarantineMessageFull
 {
     [CmdletBinding()]
     param(
@@ -459,7 +459,7 @@ function Get-QuarantineMessageFull
 
 }
 
-function Test-ExchangeAuditSetting
+function global:Test-ExchangeAuditSetting
 {
     [CmdletBinding()]
     param(
@@ -631,7 +631,7 @@ function Test-ExchangeAuditSetting
 
 }
 
-function Get-EASDetails {
+function global:Get-EASDetails {
     param(
     [parameter( Mandatory=$false, ParameterSetName="Mailbox")]
     [parameter( Position=0)]
@@ -667,7 +667,7 @@ function Get-EASDetails {
     }
 }
 
-function Enable-PIMRole
+function global:Enable-PIMRole
 {
     [CmdletBinding()]
     Param

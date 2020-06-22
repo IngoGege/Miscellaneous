@@ -1,4 +1,4 @@
-function Test-SendMail
+function global:Test-SendMail
 {
     [CmdletBinding()]
     param (
@@ -386,7 +386,7 @@ return true;
 
 }
 
-function Get-CalendarEvents
+function global:Get-CalendarEvents
 {
     [CmdletBinding()]
     param(
@@ -659,7 +659,7 @@ function Get-CalendarEvents
 
 }
 
-function Create-CalendarEvent
+function global:Create-CalendarEvent
 {
     [CmdletBinding()]
     param(
@@ -853,7 +853,7 @@ function Create-CalendarEvent
 
 }
 
-function Create-OnlineMeeting
+function global:Create-OnlineMeeting
 {
     [CmdletBinding()]
     param(
