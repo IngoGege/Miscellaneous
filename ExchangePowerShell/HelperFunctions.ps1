@@ -735,7 +735,7 @@ function global:Get-GroupbyMail
 [CmdletBinding()]
     param(
         [parameter( Position=0)]
-        [System.String[]]$EmailAddress,
+        [System.String[]]$Mail,
 
         [ValidateSet("login","select_account","consent","admin_consent","none")]
         [System.String]
@@ -1004,10 +1004,11 @@ function global:Get-GroupbyMail
     process
     {
 
-        foreach($group in $EmailAddress)
+        foreach($group in $Mail)
         {
             # get group id
-            $id = (Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/groups?filter=startswith(mail, '$($group)')" -Method GET -Headers @{ Authorization = "Bearer $($token.access_token)"}).value.id
+            #$id = (Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/groups?filter=startswith(mail, '$($group)')" -Method GET -Headers @{ Authorization = "Bearer $($token.access_token)"}).value.id
+            $id = (Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/groups?filter=mail eq '$($group)'" -Method GET -Headers @{ Authorization = "Bearer $($token.access_token)"}).value.id
 
             $body = @{
                 requests = @(
@@ -1025,6 +1026,11 @@ function global:Get-GroupbyMail
                         url = "/groups/$id/members"
                         method = 'GET'
                         id = '3'
+                    },
+                    @{
+                        url = "/groups/$id/sites/root"
+                        method = 'GET'
+                        id = '4'
                     }
                 )
             }
@@ -1051,10 +1057,13 @@ function global:Get-GroupbyMail
             }
 
             # add owners to object
-            $groupObject | Add-Member -MemberType NoteProperty -Name Owners -Value @($( ($data.responses | Where-Object -FilterScript { $_.id -eq 2}).Body.value | Select-Object * -ExcludeProperty "@odata.type" ))
+            $groupObject | Add-Member -MemberType NoteProperty -Name Owners -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 2) -and ($_.status -eq 200)}).Body.value | Select-Object * -ExcludeProperty "@odata.type" ))
 
             # add members to object
-            $groupObject | Add-Member -MemberType NoteProperty -Name Members -Value @($( ($data.responses | Where-Object -FilterScript { $_.id -eq 3}).Body.value | Select-Object * -ExcludeProperty "@odata.type" ))
+            $groupObject | Add-Member -MemberType NoteProperty -Name Members -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 3) -and ($_.status -eq 200)}).Body.value | Select-Object * -ExcludeProperty "@odata.type" ))
+
+            # add root site to object
+            $groupObject | Add-Member -MemberType NoteProperty -Name TeamSite -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 4) -and ($_.status -eq 200)}).Body | Select-Object * -ExcludeProperty "@odata.type" ))
 
             $collection += $groupObject
 
