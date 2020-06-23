@@ -735,7 +735,7 @@ function global:Get-GroupbyMail
 [CmdletBinding()]
     param(
         [parameter( Position=0)]
-        [System.String[]]$Mail,
+        [System.String[]]$EmailAddress,
 
         [ValidateSet("login","select_account","consent","admin_consent","none")]
         [System.String]
@@ -1004,7 +1004,7 @@ function global:Get-GroupbyMail
     process
     {
 
-        foreach($group in $Mail)
+        foreach($group in $EmailAddress)
         {
             # get group id
             #$id = (Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/groups?filter=startswith(mail, '$($group)')" -Method GET -Headers @{ Authorization = "Bearer $($token.access_token)"}).value.id
