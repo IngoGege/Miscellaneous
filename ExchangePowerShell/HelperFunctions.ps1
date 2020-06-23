@@ -729,3 +729,344 @@ function global:Enable-PIMRole
         }
     }
 }
+
+function global:Get-GroupbyMail
+{
+[CmdletBinding()]
+    param(
+        [parameter( Position=0)]
+        [System.String[]]$EmailAddress,
+
+        [ValidateSet("login","select_account","consent","admin_consent","none")]
+        [System.String]
+        $PromptBehaviour = 'select_account'
+    )
+
+    begin
+    {
+
+        function Get-AADAuth
+        {
+            [CmdletBinding()]
+            Param
+            (
+                [System.Uri]
+                $Authority,
+
+                [System.String]
+                $Tenant,
+
+                [System.String]
+                $Client_ID,
+
+                [ValidateSet("code","token")]
+                [System.String]
+                $Response_Type = 'code',
+
+                [System.Uri]
+                $Redirect_Uri,
+
+                [ValidateSet("query","fragment")]
+                [System.String]
+                $Response_Mode,
+
+                [System.String]
+                $State,
+
+                [System.String]
+                $Resource,
+
+                [System.String]
+                $Scope,
+
+                [ValidateSet("login","select_account","consent","admin_consent","none")]
+                [System.String]
+                $Prompt,
+
+                [System.String]
+                $Login_Hint,
+
+                [System.String]
+                $Domain_Hint,
+
+                [ValidateSet("plain","S256")]
+                [System.String]
+                $Code_Challenge_Method,
+
+                [System.String]
+                $Code_Challenge,
+
+                [System.Management.Automation.SwitchParameter]
+                $V2
+            )
+
+            Begin
+            {
+                Add-Type -AssemblyName System.Web
+
+                If ($V2)
+                {
+                    $OAuthSub = '/oauth2/v2.0/authorize?'
+                }
+                Else
+                {
+                    $OAuthSub = '/oauth2/authorize?'
+                }
+
+                #create autorithy Url
+                $AuthUrl = $Authority.AbsoluteUri + $Tenant + $OAuthSub
+                Write-Verbose -Message "AuthUrl:$($AuthUrl)"
+
+                #create empty body variable
+                $Body = @{}
+                $Url_String = ''
+
+                Function Show-OAuthWindow
+                {
+                    [CmdletBinding()]
+                    param(
+                        [System.Uri]
+                        $Url,
+
+                        [ValidateSet("query","fragment")]
+                        [System.String]
+                        $Response_Mode
+                    )
+
+                    Write-Verbose "Show-OAuthWindow Url:$($Url)"
+                    Add-Type -AssemblyName System.Windows.Forms
+
+                    $global:form = New-Object -TypeName System.Windows.Forms.Form -Property @{Width=440;Height=640}
+                    $global:web  = New-Object -TypeName System.Windows.Forms.WebBrowser -Property @{Width=420;Height=600;Url=($url ) }
+                    $DocComp  = {
+                        $Global:uri = $web.Url.AbsoluteUri
+                        if ($Global:Uri -match "error=[^&]*|code=[^&]*|code=[^#]*|#access_token=*")
+                        {
+                            $form.Close()
+                        }
+                    }
+
+                    if (-not $Redirect_Uri.AbsoluteUri -eq 'urn:ietf:wg:oauth:2.0:oob' )
+                    {
+                        $web.ScriptErrorsSuppressed = $true
+                    }
+                    $web.Add_DocumentCompleted($DocComp)
+                    $form.Controls.Add($web)
+                    $form.Add_Shown({$form.Activate()})
+                    $form.ShowDialog() | Out-Null
+
+                    switch ($Response_Mode)
+                    {
+                        "query"     {$UrlToBeParsed = $web.Url.Query}
+                        "fragment"  {$UrlToBeParsed = $web.Url.Fragment}
+                        "form_post" {$UrlToBeParsed = $web.Url.Fragment}
+                    }
+    
+                    $queryOutput = [System.Web.HttpUtility]::ParseQueryString($UrlToBeParsed)
+                    $global:result = $web
+                    $output = @{}
+                    foreach($key in $queryOutput.Keys){
+                        $output["$key"] = $queryOutput[$key]
+                    }
+
+                    $output
+                }
+            }
+
+            Process
+            {
+                $Params = $PSBoundParameters.GetEnumerator() | Where-Object -FilterScript {$_.key -inotmatch 'Verbose|v2|authority|tenant|Redirect_Uri'}
+                foreach ($Param in $Params)
+                {
+                    Write-Verbose -Message "$($Param.Key)=$($Param.Value)"
+                    $Url_String += "&" + $Param.Key + '=' + [System.Web.HttpUtility]::UrlEncode($Param.Value)
+                }
+
+                If ($Redirect_Uri)
+                {
+                    $Url_String += "&Redirect_Uri=$Redirect_Uri"
+                }
+                $Url_String = $Url_String.TrimStart("&")
+                Write-Verbose "RedirectURI:$($Redirect_Uri)"
+                Write-Verbose "URL:$($Url_String)"
+                $Response = Show-OAuthWindow -Url $($AuthUrl + $Url_String) -Response_Mode $Response_Mode
+            }
+
+            End
+            {
+                If ($Response.Count -gt 0)
+                {
+                    $Response
+                }
+                Else
+                {
+                    Write-Verbose "Error occured"
+                    Add-Type -AssemblyName System.Web
+                    [System.Web.HttpUtility]::UrlDecode($result.Url.OriginalString)
+                }
+            }
+        }
+
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+
+        try {
+            # get code
+            $authParams = @{
+                Authority = 'https://login.microsoftonline.com/'
+                Tenant = 'common'
+                Client_ID = 'd3590ed6-52b3-4102-aeff-aad2292ab01c'
+                Redirect_Uri = 'urn:ietf:wg:oauth:2.0:oob'
+                Resource = 'https://graph.microsoft.com'
+                Prompt = $PromptBehaviour
+                Response_Mode = 'query'
+                Response_Type = 'code'
+            }
+
+            $script:authCode = Get-AADAuth @authParams
+
+            if ( [System.String]::IsNullOrEmpty($authCode.code) )
+            {
+                Write-Host "Accesstoken is NULL! Stopping..."
+                break
+            }
+
+            # create body
+            $body = @{
+                client_id = $authParams.Client_ID
+                code = $($authCode['code'])
+                redirect_uri = $authParams.Redirect_URI
+                grant_type = "authorization_code"
+            }
+
+            $params = @{
+                ContentType = 'application/x-www-form-urlencoded'
+                Method = 'POST'
+                Uri = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+                Body = $body
+            }
+
+            $token=Invoke-RestMethod @params
+        }
+
+        catch {
+            $Error[0].Exception
+        }
+
+        $collection = [System.Collections.ArrayList]@()
+
+        [System.String[]]$script:selectProperties = @(
+            "allowExternalSenders",
+            "assignedLicenses",
+            "assignedLabels",
+            "assignedLicenses",
+            "autoSubscribeNewMembers",
+            "classification",
+            "createdByAppId",
+            "createdDateTime",
+            "deletedDateTime",
+            "description",
+            "displayName",
+            "expirationDateTime",
+            "groupTypes",
+            "hideFromAddressLists",
+            "hideFromOutlookClients",
+            "id",
+            "isSubscribedByMail",
+            "licenseProcessingState",
+            "mail",
+            "mailEnabled",
+            "mailNickname",
+            "membershipRule",
+            "membershipRuleProcessingState",
+            "onPremisesDomainName",
+            "onPremisesLastSyncDateTime",
+            "onPremisesNetBiosName",
+            "onPremisesProvisioningErrors",
+            "onPremisesSamAccountName",
+            "onPremisesSecurityIdentifier",
+            "onPremisesSyncEnabled",
+            "preferredDataLocation",
+            "preferredLanguage",
+            "proxyAddresses",
+            "renewedDateTime",
+            "resourceBehaviorOptions",
+            "resourceProvisioningOptions",
+            "securityEnabled",
+            "securityIdentifier",
+            "theme",
+            "unseenConversationsCount",
+            "unseenCount",
+            "unseenMessagesCount",
+            "visibility")
+
+    }
+
+    process
+    {
+
+        foreach($group in $EmailAddress)
+        {
+            # get group id
+            $id = (Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/groups?filter=startswith(mail, '$($group)')" -Method GET -Headers @{ Authorization = "Bearer $($token.access_token)"}).value.id
+
+            $body = @{
+                requests = @(
+                    @{
+                        url = "/groups/$id" + '?$select=' + $($selectProperties -join ',')
+                        method = 'GET'
+                        id = '1'
+                    },
+                    @{
+                        url = "/groups/$id/owners"
+                        method = 'GET'
+                        id = '2'
+                    },
+                    @{
+                        url = "/groups/$id/members"
+                        method = 'GET'
+                        id = '3'
+                    }
+                )
+            }
+
+            $restParams = @{
+                ContentType = 'application/json'
+                Method = 'POST'
+                Headers = @{ Authorization = "Bearer $($token.access_token)"}
+                Body = $body | ConvertTo-Json -Depth 4
+                Uri = 'https://graph.microsoft.com/beta/$batch'
+            }
+
+            $global:data = Invoke-RestMethod @restParams
+
+            # create custom object
+            $groupInfo = $null
+            $groupInfo = ($data.responses | Where-Object -FilterScript { $_.id -eq 1}).Body | Select-Object * -ExcludeProperty "@odata.context"
+            $groupProperties = $groupInfo | Get-Member -MemberType NoteProperty
+            $groupObject = New-Object -TypeName psobject
+
+            foreach ($property in $groupProperties)
+            {
+                $groupObject | Add-Member -MemberType NoteProperty -Name $( $property.Name ) -Value $( $groupInfo.$( $property.Name ) )
+            }
+
+            # add owners to object
+            $groupObject | Add-Member -MemberType NoteProperty -Name Owners -Value @($( ($data.responses | Where-Object -FilterScript { $_.id -eq 2}).Body.value | Select-Object * -ExcludeProperty "@odata.type" ))
+
+            # add members to object
+            $groupObject | Add-Member -MemberType NoteProperty -Name Members -Value @($( ($data.responses | Where-Object -FilterScript { $_.id -eq 3}).Body.value | Select-Object * -ExcludeProperty "@odata.type" ))
+
+            $collection += $groupObject
+
+        }
+    }
+
+    end
+    {
+        $collection
+        $timer.Stop()
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
+    }
+
+}
+
