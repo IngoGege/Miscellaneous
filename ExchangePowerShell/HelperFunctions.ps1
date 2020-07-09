@@ -1079,3 +1079,251 @@ function global:Get-GroupbyMail
 
 }
 
+function global:Get-MSGraphUser
+{
+    [CmdletBinding()]
+    param(
+        [parameter( Position=0)]
+        [System.String[]]
+        $User,
+
+        [System.String]
+        $AccessToken,
+
+        [System.Management.Automation.SwitchParameter]
+        $GetMailboxSettings
+
+    )
+
+    begin
+    {
+
+        [System.String[]]$global:selectProperties = @(
+            "aboutMe",
+            "accountEnabled",
+            "ageGroup",
+            "assignedLicenses",
+            "assignedPlans",
+            "birthday",
+            "businessPhones",
+            "city",
+            "companyName",
+            "consentProvidedForMinor",
+            "country",
+            "createdDateTime",
+            "creationType",
+            "deletedDateTime",
+            "department",
+            "displayName",
+            "employeeId",
+            "externalUserState",
+            "externalUserStateChangeDateTime",
+            "faxNumber",
+            "givenName",
+            "hireDate",
+            "id",
+            "identities",
+            "imAddresses",
+            "interests",
+            "isResourceAccount",
+            "jobTitle",
+            "lastPasswordChangeDateTime",
+            "legalAgeGroupClassification",
+            "licenseAssignmentStates",
+            "mail",
+            "mailNickname",
+            "mobilePhone",
+            "mySite",
+            "officeLocation",
+            "onPremisesDistinguishedName",
+            "onPremisesDomainName",
+            "onPremisesExtensionAttributes",
+            "onPremisesImmutableId",
+            "onPremisesLastSyncDateTime",
+            "onPremisesProvisioningErrors",
+            "onPremisesSamAccountName",
+            "onPremisesSecurityIdentifier",
+            "onPremisesSyncEnabled",
+            "onPremisesUserPrincipalName",
+            "otherMails",
+            "passwordPolicies",
+            "passwordProfile",
+            "pastProjects",
+            "postalCode",
+            "preferredDataLocation",
+            "preferredLanguage",
+            "preferredName",
+            "provisionedPlans",
+            "proxyAddresses",
+            "refreshTokensValidFromDateTime",
+            "responsibilities",
+            "schools",
+            "showInAddressList",
+            "skills",
+            "signInSessionsValidFromDateTime",
+            "state",
+            "streetAddress",
+            "surname",
+            "usageLocation",
+            "userPrincipalName",
+            "userType"
+            )
+
+        $collection = [System.Collections.ArrayList]@()
+
+    }
+
+    process
+    {
+        foreach ($account in $User)
+        {
+
+            $body = @{
+                requests = @(
+                    @{
+                        url = "/users/$($account)" + '?$select=' + $($global:selectProperties -join ',')
+                        method = 'GET'
+                        id = '1'
+                    },
+                    @{
+                        url = "/users/$($account)/manager"
+                        method = 'GET'
+                        id = '2'
+                    },
+                    @{
+                        url = "/users/$($account)/memberof"
+                        method = 'GET'
+                        id = '3'
+                    }
+                )
+            }
+            
+            if ($GetMailboxSettings)
+            {
+                $mailboxsettings = @{
+                        url = "/users/$($account)" + '?$select=mailboxSettings'
+                        method = 'GET'
+                        id = '4'
+                    }
+
+                $body.requests += $mailboxsettings
+            }
+
+            $restParams = @{
+                ContentType = 'application/json'
+                Method = 'POST'
+                Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                Body = $body | ConvertTo-Json -Depth 4
+                Uri = 'https://graph.microsoft.com/beta/$batch'
+            }
+
+            $global:data = Invoke-RestMethod @restParams
+
+            # create custom object
+            $userObject = New-Object -TypeName psobject
+            $userInfo = $null
+            $userInfo = ($data.responses | Where-Object -FilterScript { $_.id -eq 1}).Body | Select-Object * -ExcludeProperty "@odata.context"
+            $userProperties = $userInfo | Get-Member -MemberType NoteProperty
+
+            foreach ($property in $userProperties)
+            {
+                $userObject | Add-Member -MemberType NoteProperty -Name $( $property.Name ) -Value $( $userInfo.$( $property.Name ) )
+            }
+
+            # add manager to object
+            $userObject | Add-Member -MemberType NoteProperty -Name Manager -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 2) -and ($_.status -eq 200)}).Body | Select-Object * -ExcludeProperty "@odata.Context","@odata.type" ))
+
+            # extract memberOf response
+            $responseMemberOf = ($data.responses | Where-Object -FilterScript { ($_.id -eq 3) -and ($_.status -eq 200)}).body
+
+            if ($responseMemberOf.'@odata.nextLink')
+            {
+
+                Write-Verbose 'Need to fetch more data for memberOf...'
+                # create collection
+                $groupCollection = [System.Collections.ArrayList]@()
+
+                # add first batch of groups to collection
+                $groupCollection += $responseMemberOf.Value
+
+                do
+                {
+                    $groupParams = @{
+                        ContentType = 'application/json'
+                        Method = 'GET'
+                        Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                        Uri = $($responseMemberOf.'@odata.nextLink')
+                    }
+
+                    $responseMemberOf = Invoke-RestMethod @groupParams
+
+                    $groupCollection += $responseMemberOf.Value
+
+                } while ($responseMemberOf.'@odata.nextLink')
+
+                $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @( $groupCollection )
+
+            }
+            else
+            {
+                $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 3) -and ($_.status -eq 200)}).Body | Select-Object * -ExcludeProperty "@odata.Context","@odata.type" ))
+            }
+
+            # retrieve joined teams
+            $teamsParams = @{
+                        ContentType = 'application/json'
+                        Method = 'GET'
+                        Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                        Uri = "https://graph.microsoft.com/beta/users/$($userInfo.id)/joinedTeams"
+            }
+
+            $responseJoinedTeams = Invoke-RestMethod @teamsParams
+
+            if ($responseJoinedTeams.'@odata.nextLink')
+            {
+
+                Write-Verbose 'Need to fetch more data for joinedTeams...'
+                # create collection
+                $teamsCollection = [System.Collections.ArrayList]@()
+
+                # add first batch of groups to collection
+                $teamsCollection += $responseJoinedTeams.Value
+
+                do
+                {
+                    $groupParams = @{
+                        ContentType = 'application/json'
+                        Method = 'GET'
+                        Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                        Uri = $($responseJoinedTeams.'@odata.nextLink')
+                    }
+
+                    $responseJoinedTeams = Invoke-RestMethod @groupParams
+
+                    $teamsCollection += $responseJoinedTeams.Value
+
+                } while ($responseJoinedTeams.'@odata.nextLink')
+
+                $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @( $teamsCollection )
+
+            }
+            else
+            {
+                $userObject | Add-Member -MemberType NoteProperty -Name JoinedTeams -Value @($responseJoinedTeams.Value)
+            }
+
+            if ($GetMailboxSettings)
+            {
+                $userObject | Add-Member -MemberType NoteProperty -Name MailboxSettings -Value  @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 4) -and ($_.status -eq 200)}).Body.mailboxSettings ))
+            }
+
+            $collection += $userObject
+        }
+    }
+
+    end
+    {
+        $collection
+    }
+}
+
