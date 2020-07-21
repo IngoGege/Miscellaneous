@@ -254,7 +254,16 @@ function global:Get-MessageTraceFull
 
 function global:Prompt
 {
-    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " Connected to EXO as $((Get-PSSession ).Runspace.ConnectionInfo.Credential.UserName)"
+    if ((Get-PSSession).ComputerName -match 'compliance')
+    {
+        $ConnectedTo = 'SCC'
+    }
+    else
+    {
+        $ConnectedTo = 'EXO'
+    }
+
+    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " Connected to $($ConnectedTo) as $((Get-PSSession ).Runspace.ConnectionInfo.Credential.UserName)"
     Write-Host '[' -NoNewline
     Write-Host (Get-Date -UFormat '%T')-NoNewline
     Write-Host ']:' -NoNewline
@@ -730,7 +739,7 @@ function global:Enable-PIMRole
     }
 }
 
-function global:Get-GroupbyMail
+function global:Get-MSGraphGroupbyMail
 {
 [CmdletBinding()]
     param(
@@ -1088,10 +1097,13 @@ function global:Get-MSGraphUser
         $User,
 
         [System.String]
-        $AccessToken,
+        $AccessToken = $MSGraphToken[0].AccessToken,
 
         [System.Management.Automation.SwitchParameter]
-        $GetMailboxSettings
+        $GetMailboxSettings,
+
+        [System.Management.Automation.SwitchParameter]
+        $GetDeltaToken
 
     )
 
@@ -1197,7 +1209,7 @@ function global:Get-MSGraphUser
                     }
                 )
             }
-            
+
             if ($GetMailboxSettings)
             {
                 $mailboxsettings = @{
@@ -1266,7 +1278,7 @@ function global:Get-MSGraphUser
             }
             else
             {
-                $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 3) -and ($_.status -eq 200)}).Body | Select-Object * -ExcludeProperty "@odata.Context","@odata.type" ))
+                $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 3) -and ($_.status -eq 200)}).Body.value | Select-Object * -ExcludeProperty "@odata.Context","@odata.type" ))
             }
 
             # retrieve joined teams
@@ -1304,7 +1316,7 @@ function global:Get-MSGraphUser
 
                 } while ($responseJoinedTeams.'@odata.nextLink')
 
-                $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @( $teamsCollection )
+                $userObject | Add-Member -MemberType NoteProperty -Name JoinedTeams -Value @( $teamsCollection )
 
             }
             else
@@ -1317,6 +1329,107 @@ function global:Get-MSGraphUser
                 $userObject | Add-Member -MemberType NoteProperty -Name MailboxSettings -Value  @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 4) -and ($_.status -eq 200)}).Body.mailboxSettings ))
             }
 
+            if ($GetDeltaToken)
+            {
+                Write-Verbose "Get delta for $($userInfo.userPrincipalName)"
+                $deltaParams = @{
+                        ContentType = 'application/json'
+                        Method = 'GET'
+                        Headers = @{ Authorization = "Bearer $($AccessToken)"; prefer = "return=minimal"}
+                        #Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                        Uri = 'https://graph.microsoft.com/beta/users/delta?' + '$filter=id eq ' + "'$($userInfo.id)'" + '&$deltaToken=latest'
+                }
+
+                $global:responseDelta = Invoke-RestMethod @deltaParams
+                
+                if ( -not [System.String]::IsNullOrEmpty($responseDelta.'@odata.deltaLink') )
+                {
+                    $deltaObject = New-Object -TypeName psobject
+
+                    $deltaObject | Add-Member -MemberType NoteProperty -Name createdDateTimeUTC -Value $(Get-Date (Get-Date).ToUniversalTime() -Format u)
+                    $deltaObject | Add-Member -MemberType NoteProperty -Name deltaLink -Value $($responseDelta.'@odata.deltaLink')
+
+                    $userObject | Add-Member -MemberType NoteProperty -Name DeltaLink -Value @( $deltaObject )
+                }
+            }
+
+            if ($GetDelta)
+            {
+                Write-Verbose "Get delta for $($userInfo.userPrincipalName)"
+                $deltaParams = @{
+                        ContentType = 'application/json'
+                        Method = 'GET'
+                        Headers = @{ Authorization = "Bearer $($AccessToken)"; prefer = "return=minimal"}
+                        #Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                        Uri = 'https://graph.microsoft.com/beta/users/delta?' + '$filter=id eq ' + "'$($userInfo.id)'"
+                }
+                
+                $responseDelta = Invoke-RestMethod @deltaParams
+                
+                if ($responseDelta.'@odata.nextLink')
+                {
+
+                    Write-Verbose 'Need to fetch more data for delta...'
+                    # create collection
+                    $deltaCollection = [System.Collections.ArrayList]@()
+
+                    # add first batch of groups to collection
+                    $deltaCollection += $responseDelta.Value
+
+                    do
+                    {
+                        $deltaParams = @{
+                            ContentType = 'application/json'
+                            Method = 'GET'
+                            Headers = @{ Authorization = "Bearer $($AccessToken)"; prefer = "return=minimal"}
+                            Uri = $($responseDelta.'@odata.nextLink')
+                        }
+
+                        $responseDelta = Invoke-RestMethod @deltaParams
+
+                        $deltaCollection += $responseDelta.Value
+
+                    } while ($responseDelta.'@odata.nextLink')
+
+                    if ($responseDelta.'@odata.deltaLink')
+                    {
+                        $deltaParams = @{
+                            ContentType = 'application/json'
+                            Method = 'GET'
+                            Headers = @{ Authorization = "Bearer $($AccessToken)"; prefer = "return=minimal"}
+                            Uri = $($responseDelta.'@odata.deltaLink')
+                        }
+
+                        $responseDelta = Invoke-RestMethod @deltaParams
+
+                        $deltaCollection += $responseDelta.Value
+                        
+                        do
+                        {
+                            $deltaParams = @{
+                                ContentType = 'application/json'
+                                Method = 'GET'
+                                Headers = @{ Authorization = "Bearer $($AccessToken)"; prefer = "return=minimal"}
+                                Uri = $($responseDelta.'@odata.deltaLink')
+                            }
+    
+                            $responseDelta = Invoke-RestMethod @deltaParams
+    
+                            $deltaCollection += $responseDelta.Value
+    
+                        } while ($responseDelta.'@odata.deltaLink')
+
+                    }
+    
+                    $userObject | Add-Member -MemberType NoteProperty -Name Delta -Value @( $deltaCollection )
+    
+                }
+                else
+                {
+                    $userObject | Add-Member -MemberType NoteProperty -Name Delta -Value @($responseDelta.Value)
+                }
+            }
+
             $collection += $userObject
         }
     }
@@ -1324,6 +1437,367 @@ function global:Get-MSGraphUser
     end
     {
         $collection
+    }
+}
+
+function global:Get-RESTAzKeyVaultSecret
+{
+#https://docs.microsoft.com/rest/api/keyvault/getsecrets/getsecrets
+#https://docs.microsoft.com/rest/api/keyvault/getsecret/getsecret
+#https://docs.microsoft.com/rest/api/keyvault/getcertificate/getcertificate
+
+[CmdletBinding(DefaultParameterSetName='AuthCodeFlow')]
+Param (
+    [parameter( Mandatory=$true, Position=0)]
+    [ValidateNotNullOrEmpty()]
+    [System.Uri]
+    $AZKeyVaultBaseUri,
+
+    [parameter( Mandatory=$true, Position=1)]
+    [ValidateNotNullOrEmpty()]
+    [System.String]
+    $ClientID,
+
+    [parameter( Mandatory=$false, Position=2, ParameterSetName='ClientSecretFlow')]
+    [ValidateNotNullOrEmpty()]
+    [System.String]
+    $ClientSecret,
+
+    [parameter( Mandatory=$true, Position=3, ParameterSetName='ClientSecretFlow')]
+    [ValidateNotNullOrEmpty()]
+    [System.String]
+    $TenantID,
+
+    [parameter( Mandatory=$true, Position=4, ParameterSetName='AuthCodeFlow')]
+    [ValidateNotNullOrEmpty()]
+    [System.String]
+    $RedirectUri,
+
+    [parameter( Mandatory=$false, Position=5, ParameterSetName="Secret")]
+    [Parameter( ParameterSetName="AuthCodeFlow")]
+    [Parameter( ParameterSetName="ClientSecretFlow")]
+    [ValidateNotNullOrEmpty()]
+    [System.String]
+    $SecretName,
+
+    [parameter( Mandatory=$false, Position=6, ParameterSetName="Certificate")]
+    [Parameter( ParameterSetName="AuthCodeFlow")]
+    [Parameter( ParameterSetName="ClientSecretFlow")]
+    [ValidateNotNullOrEmpty()]
+    [System.String]
+    $CertificateName,
+
+    [parameter( Mandatory=$false, Position=7, ParameterSetName="ListSecret")]
+    [Parameter( ParameterSetName="AuthCodeFlow")]
+    [Parameter( ParameterSetName="ClientSecretFlow")]
+    [System.Management.Automation.SwitchParameter]
+    $ListSecrets
+
+)
+
+    begin
+    {
+
+        Write-Verbose "ParameterSet:$($PSCmdlet.ParameterSetName)"
+
+        function Get-AADAuth
+        {
+            [CmdletBinding()]
+            Param
+            (
+                [System.Uri]
+                $Authority,
+
+                [System.String]
+                $Tenant,
+
+                [System.String]
+                $Client_ID,
+
+                [ValidateSet("code","token")]
+                [System.String]
+                $Response_Type = 'code',
+
+                [System.Uri]
+                $Redirect_Uri,
+
+                [ValidateSet("query","fragment")]
+                [System.String]
+                $Response_Mode,
+
+                [System.String]
+                $State,
+
+                [System.String]
+                $Resource,
+
+                [System.String]
+                $Scope,
+
+                [ValidateSet("login","select_account","consent","admin_consent","none")]
+                [System.String]
+                $Prompt,
+
+                [System.String]
+                $Login_Hint,
+
+                [System.String]
+                $Domain_Hint,
+
+                [ValidateSet("plain","S256")]
+                [System.String]
+                $Code_Challenge_Method,
+
+                [System.String]
+                $Code_Challenge,
+
+                [System.Management.Automation.SwitchParameter]
+                $V2
+            )
+
+            begin
+            {
+                Add-Type -AssemblyName System.Web
+
+                if ($V2)
+                {
+                    $OAuthSub = '/oauth2/v2.0/authorize?'
+                }
+                else
+                {
+                    $OAuthSub = '/oauth2/authorize?'
+                }
+
+                #create autorithy Url
+                $AuthUrl = $Authority.AbsoluteUri + $Tenant + $OAuthSub
+                Write-Verbose -Message "AuthUrl:$($AuthUrl)"
+
+                #create empty body variable
+                $Body = @{}
+                $Url_String = ''
+
+                function Show-OAuthWindow
+                {
+                    [CmdletBinding()]
+                    param(
+                        [System.Uri]
+                        $Url,
+
+                        [ValidateSet("query","fragment")]
+                        [System.String]
+                        $Response_Mode
+                    )
+
+                    Write-Verbose "Show-OAuthWindow Url:$($Url)"
+                    Add-Type -AssemblyName System.Windows.Forms
+
+                    $form = New-Object -TypeName System.Windows.Forms.Form -Property @{Width=440;Height=640}
+                    $web  = New-Object -TypeName System.Windows.Forms.WebBrowser -Property @{Width=420;Height=600;Url=($url ) }
+                    $DocComp  = {
+                        $uri = $web.Url.AbsoluteUri
+                        if ($Uri -match "error=[^&]*|code=[^&]*|code=[^#]*|#access_token=*")
+                        {
+                            $form.Close()
+                        }
+                    }
+
+                    if (-not $Redirect_Uri.AbsoluteUri -eq 'urn:ietf:wg:oauth:2.0:oob' )
+                    {
+                        $web.ScriptErrorsSuppressed = $true
+                    }
+                    $web.Add_DocumentCompleted($DocComp)
+                    $form.Controls.Add($web)
+                    $form.Add_Shown({$form.Activate()})
+                    $form.ShowDialog() | Out-Null
+
+                    switch ($Response_Mode)
+                    {
+                        "query"     {$UrlToBeParsed = $web.Url.Query}
+                        "fragment"  {$UrlToBeParsed = $web.Url.Fragment}
+                        "form_post" {$UrlToBeParsed = $web.Url.Fragment}
+                    }
+
+                    $queryOutput = [System.Web.HttpUtility]::ParseQueryString($UrlToBeParsed)
+                    $result = $web
+                    $output = @{}
+                    foreach($key in $queryOutput.Keys){
+                        $output["$key"] = $queryOutput[$key]
+                    }
+
+                    $output
+                }
+            }
+
+            process
+            {
+                $Params = $PSBoundParameters.GetEnumerator() | Where-Object -FilterScript {$_.key -inotmatch 'Verbose|v2|authority|tenant|Redirect_Uri'}
+                foreach ($Param in $Params)
+                {
+                    Write-Verbose -Message "$($Param.Key)=$($Param.Value)"
+                    $Url_String += "&" + $Param.Key + '=' + [System.Web.HttpUtility]::UrlEncode($Param.Value)
+                }
+
+                if ($Redirect_Uri)
+                {
+                    $Url_String += "&Redirect_Uri=$Redirect_Uri"
+                }
+                $Url_String = $Url_String.TrimStart("&")
+                Write-Verbose "RedirectURI:$($Redirect_Uri)"
+                Write-Verbose "URL:$($Url_String)"
+                $Response = Show-OAuthWindow -Url $($AuthUrl + $Url_String) -Response_Mode $Response_Mode
+            }
+
+            end
+            {
+                if ($Response.Count -gt 0)
+                {
+                    $Response
+                }
+                else
+                {
+                    Write-Verbose "Error occured"
+                    Add-Type -AssemblyName System.Web
+                    [System.Web.HttpUtility]::UrlDecode($result.Url.OriginalString)
+                }
+            }
+        }
+
+        if ($ClientSecret)
+        {
+            Write-Verbose 'Request token using ClientSecret...'
+            $bodyGetToken = @{
+                client_id = $ClientID
+                client_secret = $ClientSecret
+                grant_type = 'client_credentials'
+                scope = 'https://vault.azure.net/.default'
+            }
+
+            $paramsGetToken = @{
+                ContentType = 'application/x-www-form-urlencoded'
+                Uri = 'https://login.microsoftonline.com/' + $TenantID + '/oauth2/v2.0/token'
+                Body = $bodyGetToken
+                Method = 'POST'
+            }
+
+            $global:token = Invoke-RestMethod @paramsGetToken
+
+        }
+        else
+        {
+            Write-Verbose 'Request token using AuthCode flow...'
+
+            $authParams = @{
+                Authority = 'https://login.microsoftonline.com/'
+                Tenant = 'common'
+                Client_ID = $ClientID
+                Redirect_Uri = $RedirectUri
+                Resource = 'https://vault.azure.net'
+                Prompt = 'select_account'
+                Response_Mode = 'query'
+                Response_Type = 'code'
+            }
+
+            $global:authCode = Get-AADAuth @authParams
+
+            $body = @{
+                client_id = $authParams.Client_ID
+                code = $($authCode['code'])
+                redirect_uri = $authParams.Redirect_URI
+                grant_type = "authorization_code"
+            }
+
+            $params = @{
+                ContentType = 'application/x-www-form-urlencoded'
+                Method = 'POST'
+                Uri = "https://login.microsoftonline.com/common/oauth2/token"
+                Body = $body
+            }
+
+            $global:token = Invoke-RestMethod @params
+        }
+        $collection = [System.Collections.ArrayList]@()
+
+        $secretObject = New-Object -TypeName psobject
+
+    }
+
+    process
+    {
+
+        
+        if ($ListSecrets)
+        {
+            $paramsGetSecret = @{
+                Method = 'GET'
+                URI = $AZKeyVaultBaseUri.AbsoluteUri + 'secrets?api-version=7.0'
+                Headers = @{ Authorization = "Bearer $($token.access_token)"; Accept = "*/*"; "Accept-Encoding" = 'gzip, deflate, br'}
+                ContentType = 'application/json'
+            }
+
+            $secrets = Invoke-RestMethod @paramsGetSecret
+
+            $collection += $secrets.value
+        }
+
+        if ($SecretName)
+        {
+            $paramsSecretName = @{
+                Method = 'GET'
+                URI = $AZKeyVaultBaseUri.AbsoluteUri + "secrets/$($SecretName)?api-version=7.0"
+                Headers = @{ Authorization = "Bearer $($token.access_token)"; Accept = "*/*"; "Accept-Encoding" = 'gzip, deflate, br'}
+                ContentType = 'application/json'
+            }
+
+            $secret = Invoke-RestMethod @paramsSecretName
+
+            $collection += $secret
+        }
+
+        if ($CertificateName)
+        {
+            $paramsCertificateName = @{
+                Method = 'GET'
+                URI = $AZKeyVaultBaseUri.AbsoluteUri + "certificates/$($CertificateName)?api-version=7.0"
+                Headers = @{ Authorization = "Bearer $($token.access_token)"; Accept = "*/*"; "Accept-Encoding" = 'gzip, deflate, br'}
+                ContentType = 'application/json'
+            }
+
+            $cert = Invoke-RestMethod @paramsCertificateName
+
+            $collection += $cert
+        }
+
+    }
+
+    end{
+
+        $collection
+
+    }
+
+}
+
+function global:ConvertFrom-AzKeVaultString
+{
+    [CmdletBinding()]
+    [OutputType([System.Security.Cryptography.X509Certificates.X509Certificate2])]
+    Param
+    (
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            Position=0)]
+        [System.String]
+        $value
+    )
+
+    try
+    {
+        [System.Security.Cryptography.X509Certificates.X509Certificate2][System.Convert]::FromBase64String($value)
+    }
+    catch
+    {
+        $_
     }
 }
 
