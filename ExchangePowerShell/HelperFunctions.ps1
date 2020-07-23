@@ -1500,6 +1500,12 @@ Param (
 
         Write-Verbose "ParameterSet:$($PSCmdlet.ParameterSetName)"
 
+        if ( ([System.String]::IsNullOrWhiteSpace($SecretName)) -and ([System.String]::IsNullOrWhiteSpace($CertificateName)) )
+        {
+            Write-Verbose 'Secret- and CertificateName are empty. Will set ListSecrets to $true...'
+            $ListSecrets = $true
+        }
+
         function Get-AADAuth
         {
             [CmdletBinding()]
