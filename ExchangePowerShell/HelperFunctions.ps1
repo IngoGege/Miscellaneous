@@ -739,13 +739,22 @@ function global:Enable-PIMRole
     }
 }
 
-function global:Get-MSGraphGroupbyMail
+function global:Get-MSGraphGroup
 {
 [CmdletBinding()]
     param(
         [parameter( Position=0)]
-        [System.String[]]$EmailAddress,
+        [System.String[]]$Group,
 
+        [parameter( Position=1)]
+        [System.String]
+        $AccessToken,
+
+        [parameter( Position=2)]
+        [System.Management.Automation.SwitchParameter]
+        $ByMail,
+
+        [parameter( Position=4)]
         [ValidateSet("login","select_account","consent","admin_consent","none")]
         [System.String]
         $PromptBehaviour = 'select_account'
@@ -918,47 +927,54 @@ function global:Get-MSGraphGroupbyMail
 
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
 
-        try {
-            # get code
-            $authParams = @{
-                Authority = 'https://login.microsoftonline.com/'
-                Tenant = 'common'
-                Client_ID = 'd3590ed6-52b3-4102-aeff-aad2292ab01c'
-                Redirect_Uri = 'urn:ietf:wg:oauth:2.0:oob'
-                Resource = 'https://graph.microsoft.com'
-                Prompt = $PromptBehaviour
-                Response_Mode = 'query'
-                Response_Type = 'code'
-            }
-
-            $script:authCode = Get-AADAuth @authParams
-
-            if ( [System.String]::IsNullOrEmpty($authCode.code) )
-            {
-                Write-Host "Accesstoken is NULL! Stopping..."
-                break
-            }
-
-            # create body
-            $body = @{
-                client_id = $authParams.Client_ID
-                code = $($authCode['code'])
-                redirect_uri = $authParams.Redirect_URI
-                grant_type = "authorization_code"
-            }
-
-            $params = @{
-                ContentType = 'application/x-www-form-urlencoded'
-                Method = 'POST'
-                Uri = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-                Body = $body
-            }
-
-            $token=Invoke-RestMethod @params
+        if ($AccessToken)
+        {
+            $script:token = $AccessToken
         }
-
-        catch {
-            $Error[0].Exception
+        else
+        {
+            try {
+                # get code
+                $authParams = @{
+                    Authority = 'https://login.microsoftonline.com/'
+                    Tenant = 'common'
+                    Client_ID = 'd3590ed6-52b3-4102-aeff-aad2292ab01c'
+                    Redirect_Uri = 'urn:ietf:wg:oauth:2.0:oob'
+                    Resource = 'https://graph.microsoft.com'
+                    Prompt = $PromptBehaviour
+                    Response_Mode = 'query'
+                    Response_Type = 'code'
+                }
+    
+                $script:authCode = Get-AADAuth @authParams
+    
+                if ( [System.String]::IsNullOrEmpty($authCode.code) )
+                {
+                    Write-Host "AuthCode is NULL! Stopping..."
+                    break
+                }
+    
+                # create body
+                $body = @{
+                    client_id = $authParams.Client_ID
+                    code = $($authCode['code'])
+                    redirect_uri = $authParams.Redirect_URI
+                    grant_type = "authorization_code"
+                }
+    
+                $params = @{
+                    ContentType = 'application/x-www-form-urlencoded'
+                    Method = 'POST'
+                    Uri = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+                    Body = $body
+                }
+    
+                $script:token = (Invoke-RestMethod @params).access_token
+            }
+    
+            catch {
+                $Error[0].Exception
+            }
         }
 
         $collection = [System.Collections.ArrayList]@()
@@ -1013,11 +1029,19 @@ function global:Get-MSGraphGroupbyMail
     process
     {
 
-        foreach($group in $EmailAddress)
+        foreach($group in $Group)
         {
             # get group id
-            #$id = (Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/groups?filter=startswith(mail, '$($group)')" -Method GET -Headers @{ Authorization = "Bearer $($token.access_token)"}).value.id
-            $id = (Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/groups?filter=mail eq '$($group)'" -Method GET -Headers @{ Authorization = "Bearer $($token.access_token)"}).value.id
+            if ($ByMail)
+            {
+                Write-Verbose 'Get group by email...'
+                $id = (Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/groups?filter=mail eq '$($group)'" -Method GET -Headers @{ Authorization = "Bearer $($token)"}).value.id
+            }
+            else
+            {
+                Write-Verbose 'Get group by id...'
+                $id = $group #(Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/groups/$group" -Method GET -Headers @{ Authorization = "Bearer $($token.access_token)"}).value.id
+            }
 
             $body = @{
                 requests = @(
@@ -1047,7 +1071,7 @@ function global:Get-MSGraphGroupbyMail
             $restParams = @{
                 ContentType = 'application/json'
                 Method = 'POST'
-                Headers = @{ Authorization = "Bearer $($token.access_token)"}
+                Headers = @{ Authorization = "Bearer $($token)"}
                 Body = $body | ConvertTo-Json -Depth 4
                 Uri = 'https://graph.microsoft.com/beta/$batch'
             }
@@ -1096,12 +1120,15 @@ function global:Get-MSGraphUser
         [System.String[]]
         $User,
 
+        [parameter( Position=1)]
         [System.String]
-        $AccessToken = $MSGraphToken[0].AccessToken,
+        $AccessToken,
 
+        [parameter( Position=2)]
         [System.Management.Automation.SwitchParameter]
         $GetMailboxSettings,
 
+        [parameter( Position=3)]
         [System.Management.Automation.SwitchParameter]
         $GetDeltaToken
 
@@ -1804,6 +1831,97 @@ function global:ConvertFrom-AzKeVaultString
     catch
     {
         $_
+    }
+}
+
+function global:Get-MSGraphTeam
+{
+[CmdletBinding()]
+    param(
+        [parameter( Position=0)]
+        [System.String[]]$ID,
+
+        [System.String]
+        $AccessToken
+    )
+
+    begin
+    {
+
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+
+        $collection = [System.Collections.ArrayList]@()
+
+    }
+
+    process
+    {
+
+        foreach($team in $ID)
+        {
+
+            $body = @{
+                requests = @(
+                    @{
+                        url = "/teams/$team"
+                        method = 'GET'
+                        id = '1'
+                    },
+                    @{
+                        url = "/teams/$team/channels"
+                        method = 'GET'
+                        id = '2'
+                    },
+                    @{
+                        url = "/teams/$team/channels/$team/tabs"
+                        method = 'GET'
+                        id = '3'
+                    },
+                    @{
+                        url = "/teams/$team/installedApps" + '?$expand=teamsAppDefinition'
+                        method = 'GET'
+                        id = '4'
+                    }
+                )
+            }
+
+            $restParams = @{
+                ContentType = 'application/json'
+                Method = 'POST'
+                Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                Body = $body | ConvertTo-Json -Depth 4
+                Uri = 'https://graph.microsoft.com/beta/$batch'
+            }
+
+            $global:data = Invoke-RestMethod @restParams
+
+            # create custom object
+            $teamObject = New-Object -TypeName psobject
+            $teamInfo = $null
+            $teamInfo = ($data.responses | Where-Object -FilterScript { $_.id -eq 1}).Body | Select-Object * -ExcludeProperty "@odata.context"
+            $teamProperties = $teamInfo | Get-Member -MemberType NoteProperty
+
+            foreach ($property in $teamProperties)
+            {
+                $teamObject | Add-Member -MemberType NoteProperty -Name $( $property.Name ) -Value $( $teamInfo.$( $property.Name ) )
+            }
+
+            # add channels
+            $teamObject | Add-Member -MemberType NoteProperty -Name Channels -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 2) -and ($_.status -eq 200)}).Body.value ))
+            # add tabs
+            $teamObject | Add-Member -MemberType NoteProperty -Name Tabs -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 3) -and ($_.status -eq 200)}).Body | Select-Object * -ExcludeProperty "@odata.Context","@odata.type" ))
+            # add apps
+            $teamObject | Add-Member -MemberType NoteProperty -Name InstalledApps -Value @( ($data.responses | Where-Object -FilterScript { ($_.id -eq 4) -and ($_.status -eq 200)}).Body.value.teamsAppDefinition )
+
+            $collection += $teamObject
+        }
+    }
+
+    end
+    {
+        $collection
+        $timer.Stop()
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
     }
 }
 
