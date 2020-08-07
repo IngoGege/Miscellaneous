@@ -1129,7 +1129,8 @@ function global:Get-MSGraphGroup
                 $groupInfo = $null
                 # check for error
                 $groupResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 1}
-                
+                $groupInfo = $groupResponse.Body | Select-Object * -ExcludeProperty "@odata.context"
+
                 if (($groupResponse.status -ne 200) -and ('MailboxNotEnabledForRESTAPI' -eq $groupResponse.body.error.code))
                 {
                     Write-Verbose "Error MailboxNotEnabledForRESTAPI thrown. WIll try again without certain properties..."
