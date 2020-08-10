@@ -1199,7 +1199,7 @@ function global:Get-MSGraphGroup
                 
                 if ('200' -eq $siteResponse.status)
                 {
-                    $groupObject | Add-Member -MemberType NoteProperty -Name Sites -Value @( $($siteResponse.body.value | Select-Object * -ExcludeProperty "@odata.type"))
+                    $groupObject | Add-Member -MemberType NoteProperty -Name Sites -Value @( $($siteResponse.body | Select-Object * -ExcludeProperty "@odata.context"))
                 }
                 else
                 {
