@@ -1,5 +1,42 @@
 function global:Search-UnifiedLog
 {
+    <#
+        .SYNOPSIS
+            Use the Search-UnifiedLog function to search the unified audit log.
+        .DESCRIPTION
+            This function increases ResultSize to its maximum and uses SessionID in order to retrieve all entries.
+        .PARAMETER UserIDs
+            The UserIds parameter filters the log entries by the ID of the user who performed the action.
+        .PARAMETER FreeText
+            The FreeText parameter filters the log entries by the specified text string. If the value contains spaces, enclose the value in quotation marks (")
+        .PARAMETER IPAddresses
+            The IPAddresses parameter filters the log entries by the specified IP addresses. You specify multiple IP addresses separated by commas.
+        .PARAMETER ObjectIds
+            The ObjectIds parameter filters the log entries by object ID. The object ID is the target object that was acted upon, and depends on the RecordType and Operations values of the event. For example, for SharePoint operations, the object ID is the URL path to a file, folder, or site. For Azure Active Directory operations, the object ID is the account name or GUID value of the account.
+        .PARAMETER Operations
+            The Operations parameter filters the log entries by operation. The available values for this parameter depend on the RecordType value. For a list of the available values for this parameter, see Audited activities.
+        .PARAMETER RecordType
+            The RecordType parameter filters the log entries by record type.
+        .PARAMETER SiteIds
+            The SiteIds parameter filters the log entries by site ID. You can specify multiple values separated by commas.
+        .PARAMETER StartDate
+            The StartDate parameter specifies the start date of the date range. Entries are stored in the unified audit log in Coordinated Universal Time (UTC). If you specify a date/time value without a time zone, the value is in UTC.
+        .PARAMETER EndDate
+            The EndDate parameter specifies the end date of the date range. Entries are stored in the unified audit log in Coordinated Universal Time (UTC). If you specify a date/time value without a time zone, the value is in UTC.
+        .PARAMETER SessionID
+            The SessionId parameter specifies an ID you provide in the form of a string to identify a command (the cmdlet and its parameters) that will be run multiple times to return paged data. The SessionId can be any string value you choose and in this function a created GUID.
+        .PARAMETER ResultSize
+            The ResultSize parameter specifies the maximum number of results to return. The default value is 100, maximum is 5,000 (which is the default in this function).
+        .PARAMETER Formatted
+            The Formatted switch causes attributes that are normally returned as integers (for example, RecordType and Operation) to be formatted as descriptive strings. You don't need to specify a value with this switch.
+        .EXAMPLE
+            Search-UnifiedLog -StartDate 5/1/2018 -EndDate 5/2/2018
+        .NOTES
+            The function is using the Cmdlet Search-UnifiedAuditLog and set the parameter SessionCommand to ReturnLargeSet. In combination with SessionID and ResultSize all entries up to the maximum of 50,000 will be returned.
+        .LINK
+            https://docs.microsoft.com/powershell/module/exchange/search-unifiedauditlog?view=exchange-ps
+    #>
+
     [CmdletBinding()]
     param(
         [System.String[]]
@@ -119,6 +156,42 @@ function global:Search-UnifiedLog
 
 function global:Get-MessageTraceFull
 {
+    <#
+        .SYNOPSIS
+            Use the Get-MessageTraceFull function to search MessageTrace.
+        .DESCRIPTION
+            This function increases PageSize to its maximum of 5,000 and Page to 1. Use the Get-MessageTrace cmdlet to trace messages as they pass through the cloud-based organization. You can use this cmdlet to search message data for the last 10 days. If you run this cmdlet without any parameters, only data from the last 48 hours is returned.
+        .PARAMETER EndDate
+            The EndDate parameter specifies the end date of the date range.
+        .PARAMETER Expression
+            This parameter is reserved for internal Microsoft use.
+        .PARAMETER FromIP
+            The FromIP parameter filters the results by the source IP address. For incoming messages, the value of FromIP is the public IP address of the SMTP email server that sent the message. For outgoing messages from Exchange Online, the value is blank.
+        .PARAMETER MessageId
+            The MessageId parameter filters the results by the Message-ID header field of the message. This value is also known as the Client ID. The format of the Message-ID depends on the messaging server that sent the message. The value should be unique for each message. However, not all messaging servers create values for the Message-ID in the same way. Be sure to include the full Message ID string (which may include angle brackets) and enclose the value in quotation marks (for example, "d9683b4c-127b-413a-ae2e-fa7dfb32c69d@DM3NAM06BG401.Eop-nam06.prod.protection.outlook.com").
+        .PARAMETER MessageTraceId
+            The MessageTraceId parameter can be used with the recipient address to uniquely identify a message trace and obtain more details. A message trace ID is generated for every message that's processed by the system.
+        .PARAMETER PageSize
+            The PageSize parameter specifies the maximum number of entries per page. Valid input for this parameter is an integer between 1 and 5000. The default value is 1000.
+        .PARAMETER ProbeTag
+            This parameter is reserved for internal Microsoft use.
+        .PARAMETER RecipientAddress
+            The RecipientAddress parameter filters the results by the recipient's email address. You can specify multiple values separated by commas.
+        .PARAMETER SenderAddress
+            The SenderAddress parameter filters the results by the sender's email address. You can specify multiple values separated by commas.
+        .PARAMETER StartDate
+            The StartDate parameter specifies the start date of the date range.
+        .PARAMETER Status
+            The Status parameter filters the results by the delivery status of the message.
+        .PARAMETER ToIP
+            The ToIP parameter filters the results by the destination IP address. For outgoing messages, the value of ToIP is the public IP address in the resolved MX record for the destination domain. For incoming messages to Exchange Online, the value is blank.
+        .EXAMPLE
+            Get-MessageTraceFull -SenderAddress john@contoso.com -StartDate 06/13/2018 -EndDate 06/15/2018
+        .NOTES
+            The function uses the Cmdlet Get-MessageTrace and is doing paging for you in order to retrieve up to the maximum 1,000,000 entries.
+        .LINK
+            https://docs.microsoft.com/powershell/module/exchange/get-messagetrace?view=exchange-ps
+    #>
     [CmdletBinding()]
     param(
         [System.DateTime]
@@ -137,9 +210,6 @@ function global:Get-MessageTraceFull
         $MessageTraceId,
 
         [System.Int32]
-        $PageCount = '1',
-
-        [System.Int32]
         $PageSize = '5000',
 
         [System.String]
@@ -155,7 +225,7 @@ function global:Get-MessageTraceFull
         $StartDate,
 
         [System.String[]]
-        [ValidateSet('None', 'Failed', 'Pending', 'Delivered', 'Expanded')]
+        [ValidateSet('None', 'GettingStatus', 'Failed', 'Pending', 'Delivered', 'Expanded', 'Quarantined', 'FilteredAsSpam')]
         $Status,
 
         [System.String]
@@ -254,6 +324,12 @@ function global:Get-MessageTraceFull
 
 function global:Prompt
 {
+    <#
+        .SYNOPSIS
+            The function customizes your PowerShell window.
+        .DESCRIPTION
+            The function customize your PowerShell window based on your connection: Either EXO or SCC.
+    #>
     if ((Get-PSSession).ComputerName -match 'compliance')
     {
         $ConnectedTo = 'SCC'
@@ -274,6 +350,20 @@ Prompt
 
 function global:Get-ManagedFolderAssistantLog
 {
+    <#
+        .SYNOPSIS
+            This function retrieves ECL for a given mailbox.
+        .DESCRIPTION
+            This function retrieves and format the MFA log for a given mailbox. It uses the Cmdlet Export-MailboxDiagnosticLogs for this.
+        .PARAMETER Identity
+            The Identity parameter specifies that mailbox that contains the diagnostics logs that you want to view. You can use any value that uniquely identifies the mailbox.
+        .EXAMPLE
+            Get-ManagedFolderAssistantLog -Identity ingo@bla.com | Select-Object -ExpandProperty ecl
+        .LINK
+            https://docs.microsoft.com/powershell/module/exchange/export-mailboxdiagnosticlogs?view=exchange-ps
+            https://ingogegenwarth.wordpress.com/2017/11/20/advanced-cal/
+            https://timmcmic.wordpress.com/2019/02/13/office-365-tracking-last-run-times-of-the-managed-folder-assistance-exchange-life-cycle/
+    #>
     [CmdletBinding()]
     param(
         [System.String[]]
@@ -308,6 +398,52 @@ function global:Get-ManagedFolderAssistantLog
 
 function global:Get-QuarantineMessageFull
 {
+    <#
+        .SYNOPSIS
+            Use the Get-QuarantineMessageFull function to retrieve all quarantined messages.
+        .DESCRIPTION
+            
+        .PARAMETER Direction
+            The Direction parameter filters the results by incoming or outgoing messages. Valid are Inbound and Outbound.
+        .PARAMETER Domain
+            The Domain parameter filters the results by sender or recipient domain. You can specify multiple domain values separated by commas.
+        .PARAMETER EndExpiresDate
+            The EndExpiresDate parameter specifies the latest messages that will automatically be deleted from the quarantine. Use this parameter with the StartExpiresDate parameter.
+        .PARAMETER EndReceivedDate
+            The EndReceivedDate parameter specifies the latest messages to return in the results. Use this parameter with the StartReceivedDate parameter.
+        .PARAMETER Identity
+            The Identity parameter specifies the quarantined message that you want to view. The value is a unique quarantined message identifier in the format GUID1\GUID2 (for example c14401cf-aa9a-465b-cfd5-08d0f0ca37c5\4c2ca98e-94ea-db3a-7eb8-3b63657d4db7).
+        .PARAMETER MessageId
+            The MessageId parameter filters the results by the Message-ID header field of the message. This value is also known as the Client ID. The format of the Message-ID depends on the messaging server that sent the message. The value should be unique for each message. However, not all messaging servers create values for the Message-ID in the same way. Be sure to include the full Message ID string (which may include angle brackets) and enclose the value in quotation marks (for example, "<d9683b4c-127b-413a-ae2e-fa7dfb32c69d@DM3NAM06BG401.Eop-nam06.prod.protection.outlook.com>").
+        .PARAMETER MyItems
+            The MyItems switch filters the results by messages where you (the user that's running the command) are the recipient. You don't need to specify a value with this switch.
+        .PARAMETER Page
+            The Page parameter specifies the page number of the results you want to view. Valid input for this parameter is an integer between 1 and 1000. The default value is 1.
+        .PARAMETER PageSize
+            The PageSize parameter specifies the maximum number of entries per page. Valid input for this parameter is an integer between 1 and 1000. The default value is 100.
+        .PARAMETER QuarantineTypes
+            The QuarantineTypes parameter filters the results by what caused the message to be quarantined.
+        .PARAMETER RecipientAddress
+            The RecipientAddress parameter filters the results by the recipient's email address. You can specify multiple values separated by commas.
+        .PARAMETER Reported
+            The Reported parameter filters the results by messages that have already been reported as false positives.
+        .PARAMETER SenderAddress
+            The SenderAddress parameter filters the results by the sender's email address. You can specify multiple values separated by commas.
+        .PARAMETER StartExpiresDate
+            The StartExpiresDate parameter specifies the earliest messages that will automatically be deleted from the quarantine. Use this parameter with the EndExpiresDate parameter.
+        .PARAMETER StartReceivedDate
+            The StartReceivedDate parameter specifies the earliest messages to return in the results. Use this parameter with the EndReceivedDate parameter.
+        .PARAMETER Subject
+            The Subject parameter filters the results by the subject field of the message. If the value contains spaces, enclose the value in quotation marks (").
+        .PARAMETER Type
+            The Type parameter filters the results by what caused the message to be quarantined.
+        .EXAMPLE
+            Get-QuarantineMessageFull -StartReceivedDate 06/13/2016 -EndReceivedDate 06/15/2016
+        .NOTES
+            The function increases PageSize to its maximum of 1,000 and is doing paging until all entries have been retrieved.
+        .LINK
+            https://docs.microsoft.com/powershell/module/exchange/get-quarantinemessage?view=exchange-ps
+    #>
     [CmdletBinding()]
     param(
         [System.String]
@@ -338,7 +474,7 @@ function global:Get-QuarantineMessageFull
         $PageSize = '1000',
 
         [System.String[]]
-        [ValidateSet('Bulk', 'Phish', 'Spam', 'Malware', 'TransportRule')]
+        [ValidateSet('Bulk', 'HighConfPhish', 'Phish', 'Spam', 'Malware', 'TransportRule')]
         $QuarantineTypes,
 
         [System.String[]]
@@ -360,7 +496,7 @@ function global:Get-QuarantineMessageFull
         $Subject,
 
         [System.String]
-        [ValidateSet('Bulk', 'Phish', 'Spam', 'TransportRule')]
+        [ValidateSet('Bulk', 'HighConfPhish', 'Phish', 'Spam', 'TransportRule')]
         $Type
 
     )
@@ -470,6 +606,24 @@ function global:Get-QuarantineMessageFull
 
 function global:Test-ExchangeAuditSetting
 {
+    <#
+        .SYNOPSIS
+            With this function you can compare Audit settings of mailboxes.
+        .DESCRIPTION
+            The function will retrieve the current mailbox audit and compare with desired settings.
+        .PARAMETER Mailbox
+            The Mailbox parameter specifies the mailbox you want to check. Could be a single or multiple ones. Piping is supported. You need pass the whole object from either Get-Mailbox or Get-EXOMailbox (here include the properties AuditOwnerDesired and AuditDelegateDesired!).
+        .PARAMETER AuditOwnerDesired
+            The AuditOwnerDesired parameter specifies an array of audited events for OwnerAccess.
+        .PARAMETER AuditDelegateDesired
+            The AuditDelegateDesired parameter specifies an array of audited events for DelegateAccess.
+        .EXAMPLE
+            Get-Mailbox -Identity ingo@bla.com | Test-ExchangeAuditSetting
+            Get-EXOMailbox -Identity ingo@bla.com -Properties AuditOwner,AuditDelegate
+            Get-EXOMailbox -RecipientTypeDetails UserMailbox -ResultSize unlimited -Properties AuditOwner,AuditDelegate | Test-ExchangeAuditSetting
+        .LINK
+            https://docs.microsoft.com/exchange/policy-and-compliance/mailbox-audit-logging/mailbox-audit-logging?view=exchserver-2019
+    #>
     [CmdletBinding()]
     param(
         [Parameter(
@@ -641,6 +795,18 @@ function global:Test-ExchangeAuditSetting
 }
 
 function global:Get-EASDetails {
+    <#
+        .SYNOPSIS
+            The function pulls the properties basic properties of mobile device statistics
+        .DESCRIPTION
+            The function is using Cmdlet Get-EXOMobileDeviceStatistics for mailboxes and Get-MobileDevice for deviceIDs and provides the following attributes: DeviceModel, DeviceOS, DeviceID, DeviceUserAgent, LastSyncAttemptTime, LastSuccessSync, DeviceAccessState, 
+        .PARAMETER Mailbox
+            This input parameter acts as Identity filter. The Mailbox parameter filters the results by the user mailbox that's associated with the mobile device. You can use any value that uniquely identifies the mailbox.
+        .PARAMETER DeviceID
+            The DeviceID parameter is used for filtering by DeviceID.
+        .EXAMPLE
+            Get-EASDetails -Mailbox ingo@bla.com -Verbose | Format-Table -AutoSize
+    #>
     param(
     [parameter( Mandatory=$false, ParameterSetName="Mailbox")]
     [parameter( Position=0)]
@@ -678,6 +844,27 @@ function global:Get-EASDetails {
 
 function global:Enable-PIMRole
 {
+    <#
+        .SYNOPSIS
+            This function simplifies the process for elevating your account.
+        .DESCRIPTION
+            The function simplifies the process of account elevation as you can specify the human readable role. It will lookup the role and request elevation for up-to 10 hours. Default reason will be used.
+        .PARAMETER UserPrincipalName
+            The account's UPN, for which role elevation is requested.
+        .PARAMETER Role
+            The role, which is requested.
+        .PARAMETER Hours
+            Rather specifying start and end time, a schedule of hours is used. The maximum is 10.
+        .PARAMETER Reason
+            The reason for elevation
+        .EXAMPLE
+            Enable-PIMRole -UserPrincipalName ingo@bla.com -Role 'Global Administrator'
+            Enable-PIMRole -UserPrincipalName ingo@bla.com -Role 'Exchange Administrator'
+        .NOTES
+            The function and the new PIM module requires the latest AzureADPreview module as AzureAD module doesn't support the new PIM requests.
+        .LINK
+            https://docs.microsoft.com/azure/active-directory/privileged-identity-management/powershell-for-azure-ad-roles
+    #>
     [CmdletBinding()]
     Param
     (
@@ -741,10 +928,42 @@ function global:Enable-PIMRole
 
 function global:Get-MSGraphGroup
 {
-[CmdletBinding()]
+    <#
+        .SYNOPSIS
+            This function uses Microsoft Office application for retrieving access token and queries Microsoft Graph for group properties.
+        .DESCRIPTION
+            The Microsoft Office with ClientID d3590ed6-52b3-4102-aeff-aad2292ab01c can be used to retrieve an access token with the scopes AuditLog.Read.All, Calendar.ReadWrite, Calendars.Read.Shared, Calendars.ReadWrite, Contacts.ReadWrite, DeviceManagementConfiguration.Read.All, DeviceManagementConfiguration.ReadWrite.All, Directory.AccessAsUser.All, Directory.Read.All, email, Files.Read, Files.Read.All, Group.Read.All, Group.ReadWrite.All, Mail.ReadWrite, openid, People.Read, People.Read.All, profile, User.Read.All, User.ReadWrite, Users.Read
+        .PARAMETER Group
+            The parameter Group defines the id of the group. Unless you use the parameter ByMail. If this parameter is used in addition, the function tries to get the id of the group by searching for a group with the specified e-mail address.
+        .PARAMETER AccessToken
+            This optional parameter AccessToken can be used if you want to use your own application with delegated or application permission. The parameter takes a previously acquired access token.
+        .PARAMETER ByMail
+            The parameter ByMail is a switch, which can be used in combination with Group, when an e-mail address instead of an id is used.
+        .PARAMETER Filter
+            The parameter Filter can be used, when you want to use a complex filter.
+        .PARAMETER PromptBehaviour
+            The parameter PromptBehaviour specifies the behavior when using the Authcode flow for acquiring an accesstoken using the built-in Microsoft Office application.
+        .EXAMPLE
+            Get-MSGraphGroup -Group ServicesSales@bla.com -ByMail
+            Get-MSGraphGroup -Group 6288514a-9840-4426-as05-d2955a03ea27
+            Get-MSGraphGroup -Filter Get-MSGraphGroup -Filter "startswith(mail,'ServicesSale')"
+        .NOTES
+            If you want to use your own application make sure you have all the necessary minimum permission assigned: Group.Read.All (this might change in the future. Consult the full permission reference for Microsoft Graph)
+        .LINK
+            https://docs.microsoft.com/graph/api/resources/group?view=graph-rest-beta
+            https://docs.microsoft.com/azure/active-directory/develop/v2-oauth2-auth-code-flow
+            https://docs.microsoft.com/graph/paging
+            https://docs.microsoft.com/graph/json-batching
+            https://docs.microsoft.com/graph/query-parameters
+            https://officeclient.microsoft.com/config16
+            https://docs.microsoft.com/graph/permissions-reference
+            https://docs.oasis-open.org/odata/odata/v4.0/errata03/os/complete/part2-url-conventions/odata-v4.0-errata03-os-part2-url-conventions-complete.html#_Toc453752358
+    #>
+    [CmdletBinding()]
     param(
         [parameter( Position=0)]
-        [System.String[]]$Group,
+        [System.String[]]
+        $Group,
 
         [parameter( Position=1)]
         [System.String]
@@ -1079,14 +1298,12 @@ function global:Get-MSGraphGroup
                         ErrorAction = 'Stop'
                     }
 
-                    #$responseByMail = Invoke-RestMethod @byMailParams
                     $id = (Invoke-RestMethod @byMailParams).value.id
-                    #$id = $responseByMail.value.id
                 }
                 else
                 {
                     Write-Verbose 'Get group by id...'
-                    $id = $object #(Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/groups/$group" -Method GET -Headers @{ Authorization = "Bearer $($token.access_token)"}).value.id
+                    $id = $object
                 }
 
                 $body = @{
@@ -1231,8 +1448,40 @@ function global:Get-MSGraphGroup
 
 function global:Get-MSGraphUser
 {
-    #https://docs.microsoft.com/en-us/graph/query-parameters#filter-parameter
-    #https://docs.oasis-open.org/odata/odata/v4.0/errata03/os/complete/part2-url-conventions/odata-v4.0-errata03-os-part2-url-conventions-complete.html#_Toc453752358
+    <#
+        .SYNOPSIS
+            This function retrieves properties of a user.
+        .DESCRIPTION
+            This function retrieves properties and additional information e.g.: authentication methods, serviceprincipal of a user.
+        .PARAMETER User
+            The parameter User defines the user to be queried.
+        .PARAMETER AccessToken
+            This required parameter AccessToken takes the Bearer access token for authentication the requests. The parameter takes a previously acquired access token.
+        .PARAMETER GetMailboxSettings
+            The parameter GetMailboxSettings can be used to retrieve MailboxSettings for a mailbox and is an optional switch.
+        .PARAMETER GetDeltaToken
+            The parameter GetDeltaToken returns a DeltaToken for monitoring changes.
+        .PARAMETER Filter
+            The parameter Filter can be used, when you want to use a complex filter.
+        .PARAMETER GetAuthMethods
+            The parameter GetAuthMethods returns current authentication methods for a user.
+        .EXAMPLE
+            
+        .NOTES
+            If you want to leverage all functionality you will need to provide an access token with the following claims:
+                Directory.Read.All
+                Group.Read.All
+                MailboxSettings.Read
+                User.Read.All
+                UserAuthenticationMethod.Read.All
+        .LINK
+            https://docs.microsoft.com/graph/api/resources/user?view=graph-rest-beta
+            https://docs.microsoft.com/graph/paging
+            https://docs.microsoft.com/graph/json-batching
+            https://docs.microsoft.com/graph/query-parameters
+            https://docs.microsoft.com/graph/permissions-reference
+            https://docs.oasis-open.org/odata/odata/v4.0/errata03/os/complete/part2-url-conventions/odata-v4.0-errata03-os-part2-url-conventions-complete.html#_Toc453752358
+    #>
     [CmdletBinding()]
     param(
         [parameter( Position=0)]
@@ -1241,7 +1490,7 @@ function global:Get-MSGraphUser
 
         [parameter( Position=1)]
         [System.String]
-        $AccessToken = $MSGraphToken[0].AccessToken,
+        $AccessToken,
 
         [parameter( Position=2)]
         [System.Management.Automation.SwitchParameter]
@@ -1699,58 +1948,86 @@ function global:Get-MSGraphUser
 
 function global:Get-RESTAzKeyVaultSecret
 {
-#https://docs.microsoft.com/rest/api/keyvault/getsecrets/getsecrets
-#https://docs.microsoft.com/rest/api/keyvault/getsecret/getsecret
-#https://docs.microsoft.com/rest/api/keyvault/getcertificate/getcertificate
+    <#
+        .SYNOPSIS
+            This function uses Azure Key Vault REST API for accessing secrets.
+        .DESCRIPTION
+            This function will retrieve secrets from Azure Key Vault using REST API. You can either use AuthCode or ClientCredential flow for acquiring an access token and accessing Azure Key Vault.
+        .PARAMETER AZKeyVaultBaseUri
+            The parameter AZKeyVaultBaseUri is required and is the base uri of the Azure Key Vault.
+        .PARAMETER ClientID
+            The parameter ClientID is required and defines the registered application.
+        .PARAMETER ClientSecret
+            The parameter ClientSecret is optional and used for ClientCredential flow.
+        .PARAMETER TenantID
+            The parameter TenantID is required, when ClientSecret is used and for ClientCredential flow.
+        .PARAMETER RedirectUri
+            The parameter RedirectUri is required for AuthCode flow.
+        .PARAMETER SecretName
+            The parameter SecretName defines the name of the secret you want to access in Azure Key Vault.
+        .PARAMETER CertificateName
+            The parameter CertificateName defines the name of the certificate stored in Azure Key Vault.
+        .PARAMETER ListSecrets
+            The parameter ListSecrets will list all secrest stored in Azure Key Vault.
+        .EXAMPLE
+            Get-RESTAzKeyVaultSecret -AZKeyVaultBaseUri https://exov2.vault.azure.net/ -ClientID f7f6eg58-14e0-4v12-8675-eb7980a05c7e -RedirectUri https://login.microsoftonline.com/common/oauth2/nativeclient -ListSecrets
+            Get-RESTAzKeyVaultSecret -AZKeyVaultBaseUri https://exov2.vault.azure.net/ -ClientID f7f6eg58-14e0-4v12-8675-eb7980a05c7e -RedirectUri https://login.microsoftonline.com/common/oauth2/nativeclient -SecretName MySecretString
+        .NOTES
+            
+        .LINK
+            https://docs.microsoft.com/rest/api/keyvault/getsecrets/getsecrets
+            https://docs.microsoft.com/rest/api/keyvault/getsecret/getsecret
+            https://docs.microsoft.com/rest/api/keyvault/getcertificate/getcertificate
+    #>
 
-[CmdletBinding(DefaultParameterSetName='AuthCodeFlow')]
-Param (
-    [parameter( Mandatory=$true, Position=0)]
-    [ValidateNotNullOrEmpty()]
-    [System.Uri]
-    $AZKeyVaultBaseUri,
+    [CmdletBinding(DefaultParameterSetName='AuthCodeFlow')]
+    Param (
+        [parameter( Mandatory=$true, Position=0)]
+        [ValidateNotNullOrEmpty()]
+        [System.Uri]
+        $AZKeyVaultBaseUri,
 
-    [parameter( Mandatory=$true, Position=1)]
-    [ValidateNotNullOrEmpty()]
-    [System.String]
-    $ClientID,
+        [parameter( Mandatory=$true, Position=1)]
+        [ValidateNotNullOrEmpty()]
+        [System.String]
+        $ClientID,
 
-    [parameter( Mandatory=$false, Position=2, ParameterSetName='ClientSecretFlow')]
-    [ValidateNotNullOrEmpty()]
-    [System.String]
-    $ClientSecret,
+        [parameter( Mandatory=$false, Position=2, ParameterSetName='ClientSecretFlow')]
+        [ValidateNotNullOrEmpty()]
+        [System.String]
+        $ClientSecret,
 
-    [parameter( Mandatory=$true, Position=3, ParameterSetName='ClientSecretFlow')]
-    [ValidateNotNullOrEmpty()]
-    [System.String]
-    $TenantID,
+        [parameter( Mandatory=$true, Position=3, ParameterSetName='ClientSecretFlow')]
+        [ValidateNotNullOrEmpty()]
+        [System.String]
+        $TenantID,
 
-    [parameter( Mandatory=$true, Position=4, ParameterSetName='AuthCodeFlow')]
-    [ValidateNotNullOrEmpty()]
-    [System.String]
-    $RedirectUri,
+        [parameter( Mandatory=$true, Position=4, ParameterSetName='AuthCodeFlow')]
+        [ValidateNotNullOrEmpty()]
+        [System.String]
+        $RedirectUri,
 
-    [parameter( Mandatory=$false, Position=5, ParameterSetName="Secret")]
-    [Parameter( ParameterSetName="AuthCodeFlow")]
-    [Parameter( ParameterSetName="ClientSecretFlow")]
-    [ValidateNotNullOrEmpty()]
-    [System.String]
-    $SecretName,
+        [parameter( Mandatory=$false, Position=5, ParameterSetName="Secret")]
+        [Parameter( ParameterSetName="AuthCodeFlow")]
+        [Parameter( ParameterSetName="ClientSecretFlow")]
+        [ValidateNotNullOrEmpty()]
+        [System.String]
+        $SecretName,
 
-    [parameter( Mandatory=$false, Position=6, ParameterSetName="Certificate")]
-    [Parameter( ParameterSetName="AuthCodeFlow")]
-    [Parameter( ParameterSetName="ClientSecretFlow")]
-    [ValidateNotNullOrEmpty()]
-    [System.String]
-    $CertificateName,
+        [parameter( Mandatory=$false, Position=6, ParameterSetName="Certificate")]
+        [Parameter( ParameterSetName="AuthCodeFlow")]
+        [Parameter( ParameterSetName="ClientSecretFlow")]
+        [ValidateNotNullOrEmpty()]
+        [System.String]
+        $CertificateName,
 
-    [parameter( Mandatory=$false, Position=7, ParameterSetName="ListSecret")]
-    [Parameter( ParameterSetName="AuthCodeFlow")]
-    [Parameter( ParameterSetName="ClientSecretFlow")]
-    [System.Management.Automation.SwitchParameter]
-    $ListSecrets
+        [parameter( Mandatory=$false, Position=7, ParameterSetName="ListSecret")]
+        [Parameter( ParameterSetName="AuthCodeFlow")]
+        [Parameter( ParameterSetName="ClientSecretFlow")]
+        [System.Management.Automation.SwitchParameter]
+        $ListSecrets
 
-)
+    )
 
     begin
     {
@@ -2042,6 +2319,20 @@ Param (
 
 function global:ConvertFrom-AzKeVaultString
 {
+    <#
+        .SYNOPSIS
+            This function converts a Base64 secured certificate string to a X509Certificate2 object.
+        .DESCRIPTION
+            When you retrieve a certificate secret from Azure Key Vault, it is a Base64 string and needs to be converted in case of the need of a X509Certificate2 PowerShell object. With this function you can provide the string value and the output will be the object.
+        .PARAMETER value
+            
+        .EXAMPLE
+            $secretCert = Get-RESTAzKeyVaultSecret -AZKeyVaultBaseUri https://exov2.vault.azure.net/ -ClientID f7f6eg58-14e0-4v12-8675-eb7980a05c7e -RedirectUri https://login.microsoftonline.com/common/oauth2/nativeclient -SecretName EXOv2Cert
+            ConvertFrom-AzKeVaultString -value $secretCert.value
+        .LINK
+            https://docs.microsoft.com/dotnet/api/system.security.cryptography.x509certificates.x509certificate2.-ctor?view=netcore-3.1
+            https://stackoverflow.com/questions/30237307/converting-base64-string-to-x509-certifcate
+    #>
     [CmdletBinding()]
     [OutputType([System.Security.Cryptography.X509Certificates.X509Certificate2])]
     Param
@@ -2066,7 +2357,29 @@ function global:ConvertFrom-AzKeVaultString
 
 function global:Get-MSGraphTeam
 {
-[CmdletBinding()]
+    <#
+        .SYNOPSIS
+            This function retrieves a Microsoft Teams properties.
+        .DESCRIPTION
+            This function retrieves a Microsoft Teams properties including channels,tabs and installedApps.
+        .PARAMETER ID
+            The parameter ID specifies the id of the Microsoft Team to be queried.
+        .PARAMETER AccessToken
+            This required parameter AccessToken takes the Bearer access token for authentication the requests. The parameter takes a previously acquired access token.
+        .EXAMPLE
+            Get-MSGraphTeam -ID 6288514a-8950-4426-be05-d2955a03ea27
+        .NOTES
+            If you want to leverage all functionality you will need to provide an access token with the following claims:
+                Directory.Read.All
+                Group.Read.All
+        .LINK
+            https://docs.microsoft.com/graph/api/resources/user?view=graph-rest-beta
+            https://docs.microsoft.com/graph/paging
+            https://docs.microsoft.com/graph/json-batching
+            https://docs.microsoft.com/graph/query-parameters
+            https://docs.microsoft.com/graph/permissions-reference
+    #>
+    [CmdletBinding()]
     param(
         [parameter( Position=0)]
         [System.String[]]
@@ -2074,7 +2387,7 @@ function global:Get-MSGraphTeam
 
         [parameter( Position=1)]
         [System.String]
-        $AccessToken = $MSGraphToken[0].AccessToken
+        $AccessToken
     )
 
     begin
