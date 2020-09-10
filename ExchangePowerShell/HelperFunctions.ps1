@@ -1519,13 +1519,85 @@ function global:Get-MSGraphUser
     begin
     {
 
-        ​[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
         $Error.Clear()
 
         $collection = [System.Collections.ArrayList]@()
 
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
+
+        [System.Collections.ArrayList]$script:selectProperties = @(
+            "aboutMe",
+            "accountEnabled",
+            "ageGroup",
+            "assignedLicenses",
+            "assignedPlans",
+            "birthday",
+            "businessPhones",
+            "city",
+            "companyName",
+            "consentProvidedForMinor",
+            "country",
+            "createdDateTime",
+            "creationType",
+            "deletedDateTime",
+            "department",
+            "displayName",
+            "employeeId",
+            "externalUserState",
+            "externalUserStateChangeDateTime",
+            "faxNumber",
+            "givenName",
+            "hireDate",
+            "id",
+            "identities",
+            "imAddresses",
+            "infoCatalogs",
+            "interests",
+            #"isResourceAccount",
+            "jobTitle",
+            "lastPasswordChangeDateTime",
+            "legalAgeGroupClassification",
+            "licenseAssignmentStates",
+            "mail",
+            "mailNickname",
+            "mobilePhone",
+            "mySite",
+            "officeLocation",
+            "onPremisesDistinguishedName",
+            "onPremisesDomainName",
+            "onPremisesExtensionAttributes",
+            "onPremisesImmutableId",
+            "onPremisesLastSyncDateTime",
+            "onPremisesProvisioningErrors",
+            "onPremisesSamAccountName",
+            "onPremisesSecurityIdentifier",
+            "onPremisesSyncEnabled",
+            "onPremisesUserPrincipalName",
+            "otherMails",
+            "passwordPolicies",
+            "passwordProfile",
+            "pastProjects",
+            "postalCode",
+            "preferredDataLocation",
+            "preferredLanguage",
+            "preferredName",
+            "provisionedPlans",
+            "proxyAddresses",
+            "refreshTokensValidFromDateTime",
+            "responsibilities",
+            "schools",
+            "showInAddressList",
+            "signInSessionsValidFromDateTime",
+            "skills",
+            #"signInActivity",
+            "state",
+            "streetAddress",
+            "surname",
+            "usageLocation",
+            "userPrincipalName",
+            "userType")
 
         if ($Filter)
         {
@@ -1622,17 +1694,36 @@ function global:Get-MSGraphUser
                 
                 if ($ReturnDeletedUsers)
                 {
+                    # create list with unsupported properties for deleted users
+                    [System.Collections.ArrayList]$unsupportedProperties = @(
+                        "aboutMe",
+                        "birthday",
+                        "hireDate",
+                        "interests",
+                        "mySite",
+                        "preferredName",
+                        "pastProjects",
+                        "responsibilities",
+                        "schools",
+                        "skills")
+
+                    # remove unsupported properties
+                    foreach ($prop in $unsupportedProperties)
+                    {
+                        $selectProperties.Remove($prop)
+                    }
+
                     # sanity checks
                     # check for GUID
                     if ([System.Guid]::TryParse($account,$([ref][System.Guid]::Empty)))
                     {
                         Write-Verbose 'Found valid GUID...'
-                        $userLink = "/$account"
+                        $userLink = "/$($account)" + '?$select=' + $($selectProperties -join ',')
                     }
                     if ([System.Boolean]($account -as [System.Net.Mail.MailAddress]))
                     {
                         Write-Verbose 'Seems to be an mail/UPN...'
-                        $userLink = '/?$filter=mail eq ' + "'" + $account + "'"
+                        $userLink = '/?$filter=mail eq ' + "'" + $account + "'" + '?$select=' + $($selectProperties -join ',')
                     }
 
                     $restParams = @{
@@ -1660,7 +1751,8 @@ function global:Get-MSGraphUser
                     $body = @{
                         requests = @(
                             @{
-                                url = "/users/$($account)" + '?$select=*'
+                                url = "/users/$($account)" + '?$select=' + $($selectProperties -join ',')
+                                #url = "/users/$($account)" + '?$select=*'
                                 method = 'GET'
                                 id = '1'
                             },
@@ -2059,7 +2151,7 @@ function global:Get-MSGraphUser
             }
 
             $processingTime.Stop()
-            Write-Verbose "Group processing time:$($processingTime.Elapsed.ToString())"
+            Write-Verbose "User processing time:$($processingTime.Elapsed.ToString())"
         }
     }
 
