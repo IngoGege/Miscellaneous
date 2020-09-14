@@ -1795,6 +1795,11 @@ function global:Get-MSGraphUser
                                 url = "/users/$($account)/drive"
                                 method = 'GET'
                                 id = '13'
+                            },
+                            @{
+                                url = "/users/$($account)/oauth2PermissionGrants"
+                                method = 'GET'
+                                id = '14'
                             }
                         )
                     }
@@ -2136,6 +2141,16 @@ function global:Get-MSGraphUser
                     else
                     {
                         $userObject | Add-Member -MemberType NoteProperty -Name OneDrive -Value  @( $($driveResponse.body.error) )
+                    }
+
+                    $oauth2PermissionGrantsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 14}
+                    if ('200' -eq $oauth2PermissionGrantsResponse.status)
+                    {
+                        $userObject | Add-Member -MemberType NoteProperty -Name OAuth2PermissionGrants -Value  @( $($oauth2PermissionGrantsResponse.body.value | Select-Object * -ExcludeProperty "@odata.context") )
+                    }
+                    else
+                    {
+                        $userObject | Add-Member -MemberType NoteProperty -Name OAuth2PermissionGrants -Value  @( $($oauth2PermissionGrantsResponse.body.error) )
                     }
 
                 }
@@ -2685,5 +2700,186 @@ function global:Get-MSGraphTeam
         $timer.Stop()
         Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
     }
+}
+
+function Get-AccessTokenNoLibraries
+{
+    <#
+        .SYNOPSIS
+            This function acquires an access token using either shared secret or certificate.
+        .DESCRIPTION
+            This function will acquire an access token from Azure AD using either shared secret or certificate and OAuth2.0 client credentials flow without the need of having any DLLs installed.
+        .PARAMETER Authority
+            The parameter AZKeyVaultBaseUri is required and is the base uri of the Azure Key Vault.
+        .PARAMETER ClientID
+            The parameter ClientID is required and defines the registered application.
+        .PARAMETER ClientSecret
+            The parameter ClientSecret is optional and used for ClientCredential flow.
+        .PARAMETER Certificate
+            The parameter Certificate is required, when a certificate is used and for ClientCredential flow. You need to provide a X509Certificate2 object.
+        .EXAMPLE
+            Get-AccessTokenNoLibraries -Authority = 'https://login.microsoftonline.com/53g7676c-f466-423c-82f6-vb2f55791wl7/oauth2/v2.0/token' -ClientID '1521a4b6-v487-4078-be14-c9fvb17f8ab0' -Certificate $(dir Cert:\CurrentUser\My\ | ? thumbprint -eq 'F5B5C6135719644F5582BC184B4C2239D5112C73')
+            Get-AccessTokenNoLibraries -Authority = 'https://login.microsoftonline.com/53g7676c-f466-423c-82f6-vb2f55791wl7/oauth2/v2.0/token' -ClientID '1521a4b6-v487-4078-be14-c9fvb17f8ab0' -ClientSecret 'gavuCG5Pm__cG4F1~SN_03KQDAN2N~7o.L'
+        .NOTES
+            
+        .LINK
+            https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-certificate-credentials
+            https://adamtheautomator.com/microsoft-graph-api-powershell/#Acquire_an_Access_Token_(Using_a_Certificate)
+            https://adamtheautomator.com/microsoft-graph-api-powershell/#Acquire_an_Access_Token_(Application_Id_and_Secret)
+    #>
+
+    [CmdletBinding()]
+    Param
+    (
+        [System.String]
+        $Authority,
+
+        [System.String]
+        [ValidateNotNullOrEmpty()]
+        $ClientId,
+
+        [System.String]
+        $ClientSecret,
+
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+        $Certificate
+    )
+
+    begin
+    {
+        $Scope = "https://graph.microsoft.com/.default"
+
+        if ($Certificate)
+        {
+
+            # Create base64 hash of certificate
+            $CertificateBase64Hash = [System.Convert]::ToBase64String($Certificate.GetCertHash())
+
+            # Create JWT timestamp for expiration
+            $StartDate = (Get-Date "1970-01-01T00:00:00Z" ).ToUniversalTime()
+            $JWTExpirationTimeSpan = (New-TimeSpan -Start $StartDate -End (Get-Date).ToUniversalTime().AddMinutes(2)).TotalSeconds
+            $JWTExpiration = [math]::Round($JWTExpirationTimeSpan,0)
+
+            # Create JWT validity start timestamp
+            $NotBeforeExpirationTimeSpan = (New-TimeSpan -Start $StartDate -End ((Get-Date).ToUniversalTime())).TotalSeconds
+            $NotBefore = [math]::Round($NotBeforeExpirationTimeSpan,0)
+
+            # Create JWT header
+            $JWTHeader = @{
+                alg = 'RS256'
+                typ = 'JWT'
+                # Use the CertificateBase64Hash and replace/strip to match web encoding of base64
+                x5t = $CertificateBase64Hash -replace '\+','-' -replace '/','_' -replace '='
+            }
+
+            # Create JWT payload
+            $JWTPayLoad = @{
+                # What endpoint is allowed to use this JWT
+                aud = $Authority # "https://login.microsoftonline.com/$TenantName/oauth2/token"
+
+                # Expiration timestamp
+                exp = $JWTExpiration
+
+                # Issuer = your application
+                iss = $ClientId
+
+                # JWT ID: random guid
+                jti = [System.Guid]::NewGuid()
+
+                # Not to be used before
+                nbf = $NotBefore
+
+                # JWT Subject
+                sub = $ClientId
+            }
+
+            # Convert header and payload to base64
+            $JWTHeaderToByte = [System.Text.Encoding]::UTF8.GetBytes(($JWTHeader | ConvertTo-Json))
+            $EncodedHeader = [System.Convert]::ToBase64String($JWTHeaderToByte)
+
+            $JWTPayLoadToByte =  [System.Text.Encoding]::UTF8.GetBytes(($JWTPayload | ConvertTo-Json))
+            $EncodedPayload = [System.Convert]::ToBase64String($JWTPayLoadToByte)
+
+            # Join header and Payload with "." to create a valid (unsigned) JWT
+            $JWT = $EncodedHeader + "." + $EncodedPayload
+
+            # Get the private key object of your certificate
+            $PrivateKey = $Certificate.PrivateKey
+
+            # Define RSA signature and hashing algorithm
+            $RSAPadding = [Security.Cryptography.RSASignaturePadding]::Pkcs1
+            $HashAlgorithm = [Security.Cryptography.HashAlgorithmName]::SHA256
+
+            # Create a signature of the JWT
+            $Signature = [Convert]::ToBase64String(
+                $PrivateKey.SignData([System.Text.Encoding]::UTF8.GetBytes($JWT),$HashAlgorithm,$RSAPadding)
+            ) -replace '\+','-' -replace '/','_' -replace '='
+
+            # Join the signature to the JWT with "."
+            $JWT = $JWT + "." + $Signature
+
+            # Create a hash with body parameters
+            $Body = @{
+                client_id = $ClientId
+                client_assertion = $JWT
+                client_assertion_type = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+                scope = $Scope
+                grant_type = 'client_credentials'
+            
+            }
+
+            # Use the self-generated JWT as Authorization
+            $Header = @{
+                Authorization = "Bearer $JWT"
+            }
+
+        }
+        else
+        {
+            # Create body
+            $Body = @{
+                client_id = $ClientId
+                client_secret = $ClientSecret
+                scope = $Scope
+                grant_type = 'client_credentials'
+            }
+
+        }
+
+        # Splat the parameters for Invoke-Restmethod for cleaner code
+        $PostSplat = @{
+            ContentType = 'application/x-www-form-urlencoded'
+            Method = 'POST'
+            Body = $Body
+            Uri = $Authority
+        }
+
+        if ($Certificate)
+        {
+            Write-Verbose 'Adding headers for certificate based request...'
+            $PostSplat.Add('Headers',$Header)
+        }
+
+    }
+
+    process
+    {
+        try {
+
+            
+
+            $accessToken = Invoke-RestMethod @PostSplat
+
+        }
+        catch{
+            $_
+        }
+    }
+
+    end
+    {
+        $accessToken
+    }
+
 }
 
