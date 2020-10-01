@@ -1036,7 +1036,7 @@ function global:Get-MSGraphGroup
         $TimeoutSec = '15',
 
         [parameter( Position=14)]
-        [System.Int16]
+        [System.Int32]
         $MaxFilterResult
 
     )
@@ -1360,8 +1360,8 @@ function global:Get-MSGraphGroup
 
                             Write-Verbose "Pagecount:$($counter)..."
                             $counter++
-                            
-                            if ($groupCollection.Count -ge $MaxFilterResult)
+
+                            if ( $MaxFilterResult -and ($groupCollection.Count -ge $MaxFilterResult))
                             {
                                 Write-Verbose "MaxFilterResult reached. Will stop searching now..."
                                 $groupResponse.'@odata.nextLink' = $null
@@ -1444,7 +1444,10 @@ function global:Get-MSGraphGroup
                     [void]$PowershellThread.AddParameter('Certificate',$Certificate)
                     [void]$PowershellThread.AddParameter('MaxRetry',$MaxRetry)
                     [void]$PowershellThread.AddParameter('TimeoutSec',$TimeoutSec)
-                    [void]$PowershellThread.AddParameter('MaxFilterResult',$MaxFilterResult)
+                    if ($MaxFilterResult)
+                    {
+                        [void]$PowershellThread.AddParameter('MaxFilterResult',$MaxFilterResult)
+                    }
                     [void]$PowershellThread.AddParameter('ShowProgress',$false)
 
                     $PowershellThread.RunspacePool = $RunspacePool
