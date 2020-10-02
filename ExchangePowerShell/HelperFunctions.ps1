@@ -3823,3 +3823,22 @@ function Get-AccessTokenNoLibraries
 
 }
 
+function Get-UserRealm
+{
+    [CmdletBinding()]
+    Param
+    (
+        [System.String]
+        $UserPrincipalName,
+
+        [System.Int32]
+        $TimeoutSec = '15'
+    )
+    
+    $params = @{
+        Uri = "https://login.microsoftonline.com/GetUserRealm.srf?login=$UserPrincipalName"
+        TimeoutSec = $TimeoutSec
+    }
+
+    Invoke-RestMethod @params
+}
