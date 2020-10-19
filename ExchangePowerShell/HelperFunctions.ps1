@@ -1538,7 +1538,8 @@ function global:Get-MSGraphGroup
                                     id = '4'
                             }
 
-                        }else
+                        }
+                        else
                         {
                             $members = @{
                                     #url = "/groups/$id/members/" + '$count'
@@ -3642,7 +3643,7 @@ function global:Get-MSGraphTeam
     }
 }
 
-function Get-AccessTokenNoLibraries
+function global:Get-AccessTokenNoLibraries
 {
     <#
         .SYNOPSIS
@@ -3823,7 +3824,7 @@ function Get-AccessTokenNoLibraries
 
 }
 
-function Get-UserRealm
+function global:Get-UserRealm
 {
     [CmdletBinding()]
     Param
@@ -3842,3 +3843,319 @@ function Get-UserRealm
 
     Invoke-RestMethod @params
 }
+
+function global:Get-ProtocolLogs
+{
+    [CmdletBinding()]
+    param(
+        [parameter( Mandatory=$false, Position=0)]
+        [System.Management.Automation.SwitchParameter]
+        $ByRemoteIP,
+
+        [parameter( Mandatory=$false, Position=1)]
+        [System.String[]]
+        $DetailsForRemoteIP,
+
+        [parameter( Mandatory=$false, Position=2)]
+        [System.String]
+        $DataContains,
+
+        [parameter( Mandatory=$false, Position=3)]
+        [System.String[]]
+        $SessionID,
+
+        [parameter( Mandatory=$false, Position=4)]
+        [ValidateScript({if (Test-Path $_ -PathType container) {$true} else {Throw "$_ is not a valid path!"}})]
+        [System.String]
+        $Outpath = $env:temp,
+
+        [parameter( Mandatory=$false, Position=5)]
+        [System.Int32]
+        $StartDate = "$((Get-Date).ToString("yyMMdd"))",
+
+        [parameter( Mandatory=$false, Position=6)]
+        [System.Int32]
+        $EndDate = "$((Get-Date).ToString("yyMMdd"))",
+
+        [parameter( Mandatory=$false, Position=7)]
+        [System.String]
+        [ValidateSet('Incoming','Outgoing')]
+        $Direction = 'Incoming',
+
+        [parameter( Mandatory=$false, Position=8)]
+        [ValidateScript({if (Test-Path $_ -PathType leaf) {$true} else {throw "Logparser could not be found!"}})]
+        [System.String]
+        $Logparser="C:\Program Files (x86)\Log Parser 2.2\LogParser.exe"
+    )
+
+    begin
+    {
+        # get logs
+        switch ($Direction)
+        {
+            'Incoming' {$smptLogPath = 'C:\Program Files\Microsoft\Exchange Server\V15\TransportRoles\Logs\Edge\ProtocolLog\SmtpReceive'}
+            'Outgoing' {$smptLogPath = 'C:\Program Files\Microsoft\Exchange Server\V15\TransportRoles\Logs\Edge\ProtocolLog\SmtpSend'}
+        }
+
+        $allLogs = Get-ChildItem -Path $smptLogPath -Include *.LOG -Recurse
+        # filter logs based on date
+        $allLogs = $allLogs | Where-Object { $_.Name.SubString(6,6) -ge $StartDate -and $_.Name.SubString(6,6) -le $EndDate }
+        [System.String[]]$logsFrom = @()
+        $logsFrom = $allLogs.FullName -join "','"
+        $logsFrom = "'" + $logsFrom + "'"
+        Write-Verbose "Found $($allLogs.Count) log files..."
+    }
+
+    process
+    {
+        if ($ByRemoteIP)
+        {
+            Write-Verbose "Get statistics by Remote IP address..."
+            $stamp = 'ByRemoteIP_' + $((Get-Date (Get-Date).ToUniversalTime() -Format u) -replace ' |:','_')
+            $query = @"
+            SELECT DISTINCT RemoteIP,RemotePort,RemoteDNS,Count(*) as Hits
+            USING
+            EXTRACT_PREFIX(remote-endpoint,0,':') as RemoteIP,
+            EXTRACT_SUFFIX(remote-endpoint,0,':') as RemotePort,
+            REVERSEDNS(EXTRACT_PREFIX(remote-endpoint,0,':')) as RemoteDNS
+            INTO $Outpath\$stamp.csv 
+            FROM $logsFrom
+            WHERE data LIKE 'RCPT%'
+            GROUP BY RemoteIP,RemotePort,RemoteDNS
+            ORDER BY Hits DESC
+"@
+        }
+
+        if ($DetailsForRemoteIP)
+        {
+            Write-Verbose "Get details for Remote IP address..."
+            $stamp = 'DetailsForRemoteIP_' + $((Get-Date (Get-Date).ToUniversalTime() -Format u) -replace ' |:','_')
+            $DetailsForRemoteIPString = "'" + $($DetailsForRemoteIP -join "';'") + "'"
+            $query = @"
+            SELECT day,time,[connector-id],[session-id],[sequence-number],[local-endpoint],[remote-endpoint],event,data,context
+            USING
+            TO_STRING(TO_TIMESTAMP(EXTRACT_PREFIX(REPLACE_STR([#Fields: date-time],'T',' '),0,'.'), 'yyyy-MM-dd hh:mm:ss'),'yyMMdd') AS day,
+            TO_TIMESTAMP(EXTRACT_PREFIX(TO_STRING(EXTRACT_SUFFIX([#Fields: date-time],0,'T')),0,'.'), 'hh:mm:ss') AS time,
+            EXTRACT_PREFIX(remote-endpoint,0,':') as RemoteIP
+            INTO $Outpath\$stamp.csv 
+            FROM $logsFrom
+            WHERE RemoteIP IN ($DetailsForRemoteIPString) AND data LIKE 'RCPT%'
+            GROUP BY day,time,[connector-id],[session-id],[sequence-number],[local-endpoint],[remote-endpoint],event,data,context
+"@
+        }
+
+        if ($DataContains)
+        {
+            Write-Verbose "Search data field for $($DataContains)..."
+            $stamp = 'DataContains_' + $((Get-Date (Get-Date).ToUniversalTime() -Format u) -replace ' |:','_')
+
+            $query = @"
+            SELECT day,time,[connector-id],[session-id],[sequence-number],[local-endpoint],[remote-endpoint],event,data,context,Filename
+            USING
+            TO_STRING(TO_TIMESTAMP(EXTRACT_PREFIX(REPLACE_STR([#Fields: date-time],'T',' '),0,'.'), 'yyyy-MM-dd hh:mm:ss'),'yyMMdd') AS day,
+            TO_TIMESTAMP(EXTRACT_PREFIX(TO_STRING(EXTRACT_SUFFIX([#Fields: date-time],0,'T')),0,'.'), 'hh:mm:ss') AS time,
+            EXTRACT_PREFIX(remote-endpoint,0,':') as RemoteIP
+            INTO $Outpath\$stamp.csv 
+            FROM $logsFrom
+            WHERE data LIKE '%$($DataContains)%'
+            GROUP BY day,time,[connector-id],[session-id],[sequence-number],[local-endpoint],[remote-endpoint],event,data,context,Filename
+"@
+        }
+
+        if ($SessionID)
+        {
+            Write-Verbose "Search session-id for $($SessionID)..."
+            $stamp = 'SessionID' + $((Get-Date (Get-Date).ToUniversalTime() -Format u) -replace ' |:','_')
+
+            $query = @"
+            SELECT day,time,[connector-id],[session-id],[sequence-number],[local-endpoint],[remote-endpoint],event,data,context,Filename
+            USING
+            TO_STRING(TO_TIMESTAMP(EXTRACT_PREFIX(REPLACE_STR([#Fields: date-time],'T',' '),0,'.'), 'yyyy-MM-dd hh:mm:ss'),'yyMMdd') AS day,
+            TO_TIMESTAMP(EXTRACT_PREFIX(TO_STRING(EXTRACT_SUFFIX([#Fields: date-time],0,'T')),0,'.'), 'hh:mm:ss') AS time,
+            EXTRACT_PREFIX(remote-endpoint,0,':') as RemoteIP
+            INTO $Outpath\$stamp.csv 
+            FROM $logsFrom
+            WHERE TO_STRING([session-id]) IN ($("'" + $($SessionID -join "';'") + "'"))
+            GROUP BY day,time,[connector-id],[session-id],[sequence-number],[local-endpoint],[remote-endpoint],event,data,context,Filename
+"@
+        }
+        # workaround for limitation of path length, therefore we put the query into a file
+        Set-Content -Value $query -Path $outpath\query.txt -Force
+        Write-Output -InputObject "Starting query!"
+        & $Logparser file:$outpath\query.txt -i:csv -o:csv -nSkipLines:4
+        Write-Output -InputObject "Query done!"
+    }
+
+    end
+    {
+        Write-Verbose "Done!"
+    }
+
+}
+
+function global:Get-MessageTrackingStats
+{
+    [CmdletBinding()]
+    param(
+        [parameter( Mandatory=$false, Position=0)]
+        [System.String]
+        $SourceContextContains,
+
+        [parameter( Mandatory=$false, Position=1)]
+        [System.String]
+        $SourceContextNotContains,
+
+        [parameter( Mandatory=$false, Position=3)]
+        [System.Management.Automation.SwitchParameter]
+        $ByEventID,
+
+        [parameter( Mandatory=$false, Position=4)]
+        [System.Int16]
+        $ByEventIDIntervall = '3600',
+
+        [parameter( Mandatory=$false, Position=4)]
+        [System.String[]]
+        $InEventID,
+
+        [parameter( Mandatory=$false, Position=4)]
+        [ValidateScript({if (Test-Path $_ -PathType container) {$true} else {Throw "$_ is not a valid path!"}})]
+        [System.String]
+        $Outpath = $env:temp,
+
+        [parameter( Mandatory=$false, Position=5)]
+        [System.Int32]
+        $StartDate = "$((Get-Date).ToString("yyMMdd"))",
+
+        [parameter( Mandatory=$false, Position=6)]
+        [System.Int32]
+        $EndDate = "$((Get-Date).ToString("yyMMdd"))",
+
+        [parameter( Mandatory=$false, Position=8)]
+        [ValidateScript({if (Test-Path $_ -PathType leaf) {$true} else {throw "Logparser could not be found!"}})]
+        [System.String]
+        $Logparser="C:\Program Files (x86)\Log Parser 2.2\LogParser.exe",
+
+        [parameter( Mandatory=$false, Position=8)]
+        [System.String]
+        $MSGTrackingLogPath = 'C:\Program Files\Microsoft\Exchange Server\V15\TransportRoles\Logs\MessageTracking'
+    )
+
+    begin
+    {
+        # get logs
+        $allLogs = Get-ChildItem -Path $MSGTrackingLogPath -Include *.LOG -Recurse
+        # filter logs based on date
+        if (($StartDate.ToString().Length -gt 6) -or ($EndDate.ToString().Length -gt 6))
+        {
+            if (($StartDate.ToString().Length -gt 6) -and ($EndDate.ToString().Length -gt 6))
+            {
+                $allLogs = $allLogs | ?{$_.name.substring(8,8) -ge $StartDate -and $_.name.substring(8,8) -le $EndDate}
+            }
+            elseif (($StartDate.ToString().Length -gt 6) -and ($EndDate.ToString().Length -eq 6))
+            {
+                $allLogs = $allLogs | ?{$_.name.substring(8,8) -ge $StartDate -and $_.name.substring(8,6) -le $EndDate}
+            }
+            else
+            {
+                $allLogs = $allLogs | ?{$_.name.substring(8,6) -ge $StartDate -and $_.name.substring(8,6) -le $EndDate}
+            }
+        }
+        else
+        {
+            $allLogs = $allLogs | ?{$_.name.substring(8,6) -ge $startdate -and $_.name.substring(8,6) -le $enddate}
+        }
+        #$allLogs = $allLogs | Where-Object { $_.Name.SubString(6,6) -ge $StartDate -and $_.Name.SubString(6,6) -le $EndDate }
+        [System.String[]]$logsFrom = @()
+        $logsFrom = $allLogs.FullName -join "','"
+        $logsFrom = "'" + $logsFrom + "'"
+        Write-Verbose "Found $($allLogs.Count) log files..."
+    }
+
+    process
+    {
+
+        if ($SourceContextContains)
+        {
+            Write-Verbose "Search SourceContext field for $($SourceContextContains)..."
+            $stamp = 'SourceContextContains_' + $env:COMPUTERNAME + '_' + $((Get-Date (Get-Date).ToUniversalTime() -Format u) -replace ' |:','_')
+
+            $query = @"
+            SELECT day,time,[client-ip],[client-hostname],[server-ip],[server-hostname],[source-context],[connector-id],source,[event-id],[internal-message-id],[message-id],[network-message-id],[recipient-address],[recipient-status],[total-bytes],[recipient-count],[related-recipient-address],reference,[message-subject],[sender-address],[return-path],[message-info],directionality,[tenant-id],[original-client-ip],[original-server-ip],[custom-data]
+            USING
+            TO_STRING(TO_TIMESTAMP(EXTRACT_PREFIX(REPLACE_STR([#Fields: date-time],'T',' '),0,'.'), 'yyyy-MM-dd hh:mm:ss'),'yyMMdd') AS day,
+            TO_TIMESTAMP(EXTRACT_PREFIX(TO_STRING(EXTRACT_SUFFIX([#Fields: date-time],0,'T')),0,'.'), 'hh:mm:ss') AS time
+            INTO $Outpath\$stamp.csv
+            FROM $logsFrom
+            WHERE [source-context] LIKE '%$($SourceContextContains)%'
+            GROUP BY day,time,[client-ip],[client-hostname],[server-ip],[server-hostname],[source-context],[connector-id],source,[event-id],[internal-message-id],[message-id],[network-message-id],[recipient-address],[recipient-status],[total-bytes],[recipient-count],[related-recipient-address],reference,[message-subject],[sender-address],[return-path],[message-info],directionality,[tenant-id],[original-client-ip],[original-server-ip],[custom-data]
+"@
+        }
+
+        if ($SourceContextNotContains)
+        {
+            Write-Verbose "Search SourceContext field for $($SourceContextNotContains)..."
+            $stamp = 'SourceContextNotContains_' + $env:COMPUTERNAME + '_' + $((Get-Date (Get-Date).ToUniversalTime() -Format u) -replace ' |:','_')
+
+            $query = @"
+            SELECT day,time,[client-ip],[client-hostname],[server-ip],[server-hostname],[source-context],[connector-id],source,[event-id],[internal-message-id],[message-id],[network-message-id],[recipient-address],[recipient-status],[total-bytes],[recipient-count],[related-recipient-address],reference,[message-subject],[sender-address],[return-path],[message-info],directionality,[tenant-id],[original-client-ip],[original-server-ip],[custom-data]
+            USING
+            TO_STRING(TO_TIMESTAMP(EXTRACT_PREFIX(REPLACE_STR([#Fields: date-time],'T',' '),0,'.'), 'yyyy-MM-dd hh:mm:ss'),'yyMMdd') AS day,
+            TO_TIMESTAMP(EXTRACT_PREFIX(TO_STRING(EXTRACT_SUFFIX([#Fields: date-time],0,'T')),0,'.'), 'hh:mm:ss') AS time
+            INTO $Outpath\$stamp.csv
+            FROM $logsFrom
+            WHERE [source-context] NOT LIKE '%$($SourceContextContains)%'
+            GROUP BY day,time,[client-ip],[client-hostname],[server-ip],[server-hostname],[source-context],[connector-id],source,[event-id],[internal-message-id],[message-id],[network-message-id],[recipient-address],[recipient-status],[total-bytes],[recipient-count],[related-recipient-address],reference,[message-subject],[sender-address],[return-path],[message-info],directionality,[tenant-id],[original-client-ip],[original-server-ip],[custom-data]
+"@
+        }
+
+        if ($ByEventID)
+        {
+            Write-Verbose "Search for EventIDs..."
+            $stamp = 'ByEventID_' + $env:COMPUTERNAME + '_' + $((Get-Date (Get-Date).ToUniversalTime() -Format u) -replace ' |:','_')
+
+            $query = @"
+            SELECT day,time,[event-id], Count(*) AS Count 
+            USING
+            TO_STRING(TO_TIMESTAMP(EXTRACT_PREFIX(REPLACE_STR([#Fields: date-time],'T',' '),0,'.'), 'yyyy-MM-dd hh:mm:ss'),'yyMMdd') AS day,
+            QUANTIZE(TO_TIMESTAMP(EXTRACT_PREFIX(TO_STRING(EXTRACT_SUFFIX([#Fields: date-time],0,'T')),0,'.'), 'hh:mm:ss'), $ByEventIDIntervall) AS time
+            INTO $Outpath\$stamp.csv
+            FROM $logsFrom
+            WHERE day IS NOT NULL
+            GROUP BY day,time,[event-id]
+"@
+        }
+
+        if ($InEventID)
+        {
+            Write-Verbose "Search for EventID conatains $($EventIDContains)..."
+            $stamp = 'EventIDContains_' + $env:COMPUTERNAME + '_' + $((Get-Date (Get-Date).ToUniversalTime() -Format u) -replace ' |:','_')
+
+            $query = @"
+            SELECT day,time,[client-ip],[client-hostname],[server-ip],[server-hostname],[source-context],[connector-id],source,[event-id],[internal-message-id],[message-id],[network-message-id],[recipient-address],[recipient-status],[total-bytes],[recipient-count],[related-recipient-address],reference,[message-subject],[sender-address],[return-path],[message-info],directionality,[tenant-id],[original-client-ip],[original-server-ip],[custom-data]
+            USING
+            TO_STRING(TO_TIMESTAMP(EXTRACT_PREFIX(REPLACE_STR([#Fields: date-time],'T',' '),0,'.'), 'yyyy-MM-dd hh:mm:ss'),'yyMMdd') AS day,
+            TO_TIMESTAMP(EXTRACT_PREFIX(TO_STRING(EXTRACT_SUFFIX([#Fields: date-time],0,'T')),0,'.'), 'hh:mm:ss') AS time
+            INTO $Outpath\$stamp.csv
+            FROM $logsFrom
+            --WHERE [event-id] LIKE '%$($EventIDContains)%'
+            WHERE [event-id] IN ( $(("'" +$($InEventID -join "';'") + "'").ToUpper()) )
+            GROUP BY day,time,[client-ip],[client-hostname],[server-ip],[server-hostname],[source-context],[connector-id],source,[event-id],[internal-message-id],[message-id],[network-message-id],[recipient-address],[recipient-status],[total-bytes],[recipient-count],[related-recipient-address],reference,[message-subject],[sender-address],[return-path],[message-info],directionality,[tenant-id],[original-client-ip],[original-server-ip],[custom-data]
+"@
+        }
+
+        # workaround for limitation of path length, therefore we put the query into a file
+        Set-Content -Value $query -Path $outpath\query.txt -Force
+        Write-Output -InputObject "Starting query!"
+        & $Logparser file:$outpath\query.txt -i:csv -o:csv -nSkipLines:4
+        Write-Output -InputObject "Query done!"
+    }
+
+    end
+    {
+        # clean query file
+        Get-ChildItem -LiteralPath $Outpath -Filter query.txt | Remove-Item -Confirm:$false | Out-Null
+        Write-Verbose "Done!"
+    }
+
+}
+
