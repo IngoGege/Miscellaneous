@@ -1503,6 +1503,12 @@ function global:Get-MSGraphGroup
                             }
 
                             $id = (Invoke-RestMethod @byMailParams).value.id
+
+                            if ([System.String]::IsNullOrWhiteSpace($id))
+                            {
+                                Write-Verbose "No group found for e-mail $($account) ..."
+                                break
+                            }
                         }
                         else
                         {
