@@ -2631,6 +2631,24 @@ function global:Get-MSGraphUser
                                     }
 
                                 $body.requests += $phoneMethods
+
+                                $fido2Methods = @{
+                                        url = "/users/$($account)/authentication/fido2Methods"
+                                        method = 'GET'
+                                        id = '15'
+                                    }
+
+                                $body.requests += $fido2Methods
+
+                                $passwordlessMicrosoftAuthenticatorMethods = @{
+                                        url = "/users/$($account)/authentication/passwordlessMicrosoftAuthenticatorMethods"
+                                        method = 'GET'
+                                        id = '16'
+                                    }
+
+                                $body.requests += $passwordlessMicrosoftAuthenticatorMethods
+                                
+                                
                             }
 
                             $restParams = @{
@@ -2833,9 +2851,11 @@ function global:Get-MSGraphUser
 
                             if ($GetAuthMethods)
                             {
-                                $userObject | Add-Member -MemberType NoteProperty -Name AuthenticationMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 6) -and ($_.status -eq 200)}).body.value | Select-Object * -ExcludeProperty "@odata.type" ))
+                                $userObject | Add-Member -MemberType NoteProperty -Name AuthenticationMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 6) -and ($_.status -eq 200)}).body.value ))
                                 $userObject | Add-Member -MemberType NoteProperty -Name PasswordMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 7) -and ($_.status -eq 200)}).body.value ))
                                 $userObject | Add-Member -MemberType NoteProperty -Name PhoneMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 8) -and ($_.status -eq 200)}).body.value ))
+                                $userObject | Add-Member -MemberType NoteProperty -Name Fido2Methods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 15) -and ($_.status -eq 200)}).body.value ))
+                                $userObject | Add-Member -MemberType NoteProperty -Name PasswordlessMicrosoftAuthenticatorMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 16) -and ($_.status -eq 200)}).body.value ))
                             }
 
                             $licenseResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 4}
