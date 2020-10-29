@@ -339,7 +339,7 @@ function global:Prompt
         $ConnectedTo = 'EXO'
     }
 
-    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " Connected to $($ConnectedTo) as $((Get-PSSession ).Runspace.ConnectionInfo.Credential.UserName)"
+    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " Connected to $($ConnectedTo) as $((Get-PSSession | Where-Object -FilterScript {$_.State -eq 'Opened'} ).Runspace.ConnectionInfo.Credential.UserName)"
     Write-Host '[' -NoNewline
     Write-Host (Get-Date -UFormat '%T')-NoNewline
     Write-Host ']:' -NoNewline
@@ -1259,6 +1259,10 @@ function global:Get-MSGraphGroup
                 break
             }
         }
+        else
+        {
+            $global:token = $AccessToken
+        }
 
         [System.Collections.ArrayList]$script:selectProperties = @(
             "allowExternalSenders",
@@ -1482,7 +1486,7 @@ function global:Get-MSGraphGroup
                         if ($ShowProgress)
                         {
                             $progressParams = @{
-                                Activity = "Processing group - $($groupObject)"
+                                Activity = "Processing group - $($account)"
                                 PercentComplete = $j / $Group.count * 100
                                 Status = "Remaining: $($Group.count - $j) out of $($Group.count)"
                             }
@@ -1498,7 +1502,7 @@ function global:Get-MSGraphGroup
                             $byMailParams = @{
                                 Uri = "https://graph.microsoft.com/beta/groups?filter=mail eq '$($account)'"
                                 Method = 'GET'
-                                Headers = @{ Authorization = "Bearer $($token)"}
+                                Headers = @{ Authorization = "Bearer $($AccessToken)"}
                                 ErrorAction = 'Stop'
                             }
 
@@ -4163,5 +4167,29 @@ function global:Get-MessageTrackingStats
         Write-Verbose "Done!"
     }
 
+}
+
+function global:ConvertTo-X500
+{
+
+    param(
+    [parameter(Mandatory=$true)]
+    [System.String]
+    $IMCEAEX,
+
+    [parameter(Mandatory=$false)]
+    [System.Management.Automation.SwitchParameter]
+    $URLEncoded
+    )
+
+    if ($URLEncoded)
+    {
+        Add-Type -AssemblyName System.Web
+        $IMCEAEX = [System.Web.HttpUtility]::UrlDecode($IMCEAEX)
+    }
+
+    $IMCEAEX = $IMCEAEX.replace("_","/").replace("+20"," ").replace("+28","(").replace("+29",")").replace("+40","@").replace("+2E",".").replace("+2C",",").replace("+5F","_").replace("IMCEAEX-","X500:").split("@")[0]
+
+    return $IMCEAEX
 }
 
