@@ -4213,3 +4213,1121 @@ function global:ConvertTo-X500
     return $IMCEAEX
 }
 
+function global:Get-MSGraphServicePrincipal
+{
+    <#
+        .SYNOPSIS
+            This function retrieves properties of a ServicePrincipal.
+        .DESCRIPTION
+            This function retrieves properties and additional information e.g.: appRoleAssignments, oauth2PermissionGrants or owners.
+        .PARAMETER ServicePrincipal
+            The parameter ServicePrincipal defines the servicePrincipal to be queried.
+        .PARAMETER AccessToken
+            This required parameter AccessToken takes the Bearer access token for authentication the requests. The parameter takes a previously acquired access token.
+        .PARAMETER Filter
+            The parameter Filter can be used, when you want to use a complex filter.
+        .PARAMETER ShowProgress
+            The parameter ShowProgress will show the progress of the script.
+        .PARAMETER Threads
+            The parameter Threads defines how many Threads will be created. Only used in combination with MultiThread.
+        .PARAMETER MultiThread
+            The parameters MultiThread defines whether the script is running using multithreading.
+        .PARAMETER Authority
+            The authority from where you get the token.
+        .PARAMETER ClientId
+            Application ID of the registered app.
+        .PARAMETER ClientSecret
+            The secret, which is used for Client Credentials flow.
+        .PARAMETER Certificate
+            The certificate, which is used for Client Credentials flow.
+        .PARAMETER MaxRetry
+            How many retries for each SPN in case of error.
+        .PARAMETER TimeoutSec
+            TimeoutSec for Cmdlet Invoke-RestMethod.
+        .EXAMPLE
+            # retrieve data for a specific SPN by providing a previoues retreieved Bearer access token
+            Get-MSGraphServicePrincipal -ServicePrincipal e1316a28-0ae7-4674-943b-17dcf20b4dd7 -AccessToken eyJ0eXAiOiJKV1QiLC...AwNzY5OTE4LCJuYmYiO -Verbose
+            # retrieve data for a specific user and acquire an access token with ClientCredentials flow, where a certificate is used for client credential
+            Get-MSGraphServicePrincipal -ServicePrincipal e1316a28-0ae7-4674-943b-17dcf20b4dd7 -Authority "https://login.microsoftonline.com/42f...791af7/oauth2/v2.0/token" -ClientId 1961a...2f8ab0 -Certificate $(dir Cert:\CurrentUser\My\ | ? thumbprint -eq 'F5A9C6...C2239D5112C73')
+            # retrive data for multiple users using multithreading and filter
+            Get-MSGraphServicePrincipal -Filter "StartsWith(displayname,'Microsoft')" -MultiThread -Authority "https://login.microsoftonline.com/42f...791af7/oauth2/v2.0/token" -ClientId 1961a...2f8ab0 -Certificate $(dir Cert:\CurrentUser\My\ | ? thumbprint -eq 'F5A9C6...C2239D5112C73')
+        .NOTES
+            If you want to leverage all functionality you will need to provide an access token with the following claims:
+                Directory.Read.All
+        .LINK
+            https://docs.microsoft.com/graph/api/resources/user?view=graph-rest-beta
+            https://docs.microsoft.com/graph/paging
+            https://docs.microsoft.com/graph/json-batching
+            https://docs.microsoft.com/graph/query-parameters
+            https://docs.microsoft.com/graph/permissions-reference
+            https://docs.oasis-open.org/odata/odata/v4.0/errata03/os/complete/part2-url-conventions/odata-v4.0-errata03-os-part2-url-conventions-complete.html#_Toc453752358
+            https://docs.microsoft.com/en-us/graph/throttling
+            https://docs.microsoft.com/graph/errors
+            https://docs.microsoft.com/graph/best-practices-concept#handling-expected-errors
+    #>
+    [CmdletBinding()]
+    param(
+        [parameter( Position=0)]
+        [System.String[]]
+        $ServicePrincipal,
+
+        [parameter( Position=1)]
+        [System.String]
+        $AccessToken,
+
+        [parameter( Position=2)]
+        [System.String]
+        $Filter,
+
+        [parameter( Position=3)]
+        [System.Management.Automation.SwitchParameter]
+        $ListAll,
+
+        [parameter( Position=4)]
+        [System.Management.Automation.SwitchParameter]
+        $ReturnAppRoleAssignedTo,
+
+        [parameter( Position=5)]
+        [System.Management.Automation.SwitchParameter]
+        $ReturnOauth2PermissionGrants,
+
+        [parameter( Position=6)]
+        [System.Management.Automation.SwitchParameter]
+        $ShowProgress,
+
+        [parameter( Position=7)]
+        [System.Int16]
+        $Threads = '20',
+
+        [parameter( Position=8)]
+        [System.Management.Automation.SwitchParameter]
+        $MultiThread,
+
+        [parameter( Position=9)]
+        [System.String]
+        $Authority,
+
+        [parameter( Position=10)]
+        [System.String]
+        $ClientId,
+
+        [parameter( Position=11)]
+        [System.String]
+        $ClientSecret,
+
+        [parameter( Position=12)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+        $Certificate,
+
+        [parameter( Position=13)]
+        [System.Int16]
+        $MaxRetry = '3',
+
+        [parameter( Position=14)]
+        [System.Int32]
+        $TimeoutSec = '15'
+
+    )
+
+    begin
+    {
+
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+        $Error.Clear()
+
+        $collection = [System.Collections.ArrayList]@()
+
+        function Get-AccessTokenNoLibraries
+        {
+            <#
+                .SYNOPSIS
+                    This function acquires an access token using either shared secret or certificate.
+                .DESCRIPTION
+                    This function will acquire an access token from Azure AD using either shared secret or certificate and OAuth2.0 client credentials flow without the need of having any DLLs installed.
+                .PARAMETER Authority
+                    The parameter AZKeyVaultBaseUri is required and is the base uri of the Azure Key Vault.
+                .PARAMETER ClientID
+                    The parameter ClientID is required and defines the registered application.
+                .PARAMETER ClientSecret
+                    The parameter ClientSecret is optional and used for ClientCredential flow.
+                .PARAMETER Certificate
+                    The parameter Certificate is required, when a certificate is used and for ClientCredential flow. You need to provide a X509Certificate2 object.
+                .EXAMPLE
+                    Get-AccessTokenNoLibraries -Authority = 'https://login.microsoftonline.com/53g7676c-f466-423c-82f6-vb2f55791wl7/oauth2/v2.0/token' -ClientID '1521a4b6-v487-4078-be14-c9fvb17f8ab0' -Certificate $(dir Cert:\CurrentUser\My\ | ? thumbprint -eq 'F5B5C6135719644F5582BC184B4C2239D5112C73')
+                    Get-AccessTokenNoLibraries -Authority = 'https://login.microsoftonline.com/53g7676c-f466-423c-82f6-vb2f55791wl7/oauth2/v2.0/token' -ClientID '1521a4b6-v487-4078-be14-c9fvb17f8ab0' -ClientSecret 'gavuCG5Pm__cG4F1~SN_03KQDAN2N~7o.L'
+                .NOTES
+                    
+                .LINK
+                    https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-certificate-credentials
+                    https://adamtheautomator.com/microsoft-graph-api-powershell/#Acquire_an_Access_Token_(Using_a_Certificate)
+                    https://adamtheautomator.com/microsoft-graph-api-powershell/#Acquire_an_Access_Token_(Application_Id_and_Secret)
+            #>
+
+            [CmdletBinding()]
+            Param
+            (
+                [System.String]
+                $Authority,
+
+                [System.String]
+                $ClientId,
+
+                [System.String]
+                $ClientSecret,
+
+                [System.Security.Cryptography.X509Certificates.X509Certificate2]
+                $Certificate
+            )
+
+            begin
+            {
+                $Scope = "https://graph.microsoft.com/.default"
+
+                if ($Certificate)
+                {
+
+                    # Create base64 hash of certificate
+                    $CertificateBase64Hash = [System.Convert]::ToBase64String($Certificate.GetCertHash())
+
+                    # Create JWT timestamp for expiration
+                    $StartDate = (Get-Date "1970-01-01T00:00:00Z" ).ToUniversalTime()
+                    $JWTExpirationTimeSpan = (New-TimeSpan -Start $StartDate -End (Get-Date).ToUniversalTime().AddMinutes(2)).TotalSeconds
+                    $JWTExpiration = [math]::Round($JWTExpirationTimeSpan,0)
+
+                    # Create JWT validity start timestamp
+                    $NotBeforeExpirationTimeSpan = (New-TimeSpan -Start $StartDate -End ((Get-Date).ToUniversalTime())).TotalSeconds
+                    $NotBefore = [math]::Round($NotBeforeExpirationTimeSpan,0)
+
+                    # Create JWT header
+                    $JWTHeader = @{
+                        alg = 'RS256'
+                        typ = 'JWT'
+                        # Use the CertificateBase64Hash and replace/strip to match web encoding of base64
+                        x5t = $CertificateBase64Hash -replace '\+','-' -replace '/','_' -replace '='
+                    }
+
+                    # Create JWT payload
+                    $JWTPayLoad = @{
+                        # What endpoint is allowed to use this JWT
+                        aud = $Authority # "https://login.microsoftonline.com/$TenantName/oauth2/token"
+
+                        # Expiration timestamp
+                        exp = $JWTExpiration
+
+                        # Issuer = your application
+                        iss = $ClientId
+
+                        # JWT ID: random guid
+                        jti = [System.Guid]::NewGuid()
+
+                        # Not to be used before
+                        nbf = $NotBefore
+
+                        # JWT Subject
+                        sub = $ClientId
+                    }
+
+                    # Convert header and payload to base64
+                    $JWTHeaderToByte = [System.Text.Encoding]::UTF8.GetBytes(($JWTHeader | ConvertTo-Json))
+                    $EncodedHeader = [System.Convert]::ToBase64String($JWTHeaderToByte)
+
+                    $JWTPayLoadToByte =  [System.Text.Encoding]::UTF8.GetBytes(($JWTPayload | ConvertTo-Json))
+                    $EncodedPayload = [System.Convert]::ToBase64String($JWTPayLoadToByte)
+
+                    # Join header and Payload with "." to create a valid (unsigned) JWT
+                    $JWT = $EncodedHeader + "." + $EncodedPayload
+
+                    # Get the private key object of your certificate
+                    $PrivateKey = $Certificate.PrivateKey
+
+                    # Define RSA signature and hashing algorithm
+                    $RSAPadding = [Security.Cryptography.RSASignaturePadding]::Pkcs1
+                    $HashAlgorithm = [Security.Cryptography.HashAlgorithmName]::SHA256
+
+                    # Create a signature of the JWT
+                    $Signature = [Convert]::ToBase64String(
+                        $PrivateKey.SignData([System.Text.Encoding]::UTF8.GetBytes($JWT),$HashAlgorithm,$RSAPadding)
+                    ) -replace '\+','-' -replace '/','_' -replace '='
+
+                    # Join the signature to the JWT with "."
+                    $JWT = $JWT + "." + $Signature
+
+                    # Create a hash with body parameters
+                    $Body = @{
+                        client_id = $ClientId
+                        client_assertion = $JWT
+                        client_assertion_type = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+                        scope = $Scope
+                        grant_type = 'client_credentials'
+                    
+                    }
+
+                    # Use the self-generated JWT as Authorization
+                    $Header = @{
+                        Authorization = "Bearer $JWT"
+                    }
+
+                }
+                else
+                {
+                    # Create body
+                    $Body = @{
+                        client_id = $ClientId
+                        client_secret = $ClientSecret
+                        scope = $Scope
+                        grant_type = 'client_credentials'
+                    }
+
+                }
+
+                # Splat the parameters for Invoke-Restmethod for cleaner code
+                $PostSplat = @{
+                    ContentType = 'application/x-www-form-urlencoded'
+                    Method = 'POST'
+                    Body = $Body
+                    Uri = $Authority
+                }
+
+                if ($Certificate)
+                {
+                    Write-Verbose 'Adding headers for certificate based request...'
+                    $PostSplat.Add('Headers',$Header)
+                }
+
+            }
+
+            process
+            {
+                try {
+                    $accessToken = Invoke-RestMethod @PostSplat
+                }
+                catch{
+                    $_
+                }
+            }
+
+            end
+            {
+                $accessToken
+            }
+        }
+
+        if ([System.String]::IsNullOrWhiteSpace($AccessToken))
+        {
+            # check for necessary parameters
+            if ( (($Authority -and $ClientId) -and $ClientSecret) -or (($Authority -and $ClientId) -and $Certificate) )
+            {
+                Write-Verbose 'No AccessToken provided. Will acquire silently...'
+                $acquireToken = @{
+                    Authority = $Authority
+                    ClientId = $ClientId
+                    ClientSecret = $ClientSecret
+                    Certificate = $Certificate
+                }
+
+                $AccessToken = (Get-AccessTokenNoLibraries @acquireToken).access_token
+
+                $global:token = $AccessToken
+
+                if ([System.String]::IsNullOrWhiteSpace($AccessToken))
+                {
+                    Write-Verbose "Couldn't acquire a token. Will stop now..."
+                    break
+                }
+
+                Write-Verbose 'Setting accesstoken...'
+                $psBoundParameters['AccessToken'] = $AccessToken
+            }
+            else
+            {
+                Write-Host 'No accesstoken provided and not enough data for acquiring one. Will exit...'
+                break
+            }
+        }
+
+        if ($Filter -or $ListAll)
+        {
+
+            [System.Boolean]$retryRequest = $true
+
+            do {
+                try {
+
+                    if ($ListAll)
+                    {
+                        Write-Verbose 'Will list all ServicePrincipal...'
+                        $URI = 'https://graph.microsoft.com/beta/servicePrincipals?$select=id&$count=true'
+                    }
+                    else
+                    {
+                        Write-Verbose 'Found custom Filter. Will try to find ServicePrincipal based on...'
+                        $URI = 'https://graph.microsoft.com/beta/servicePrincipals?$filter='
+                        $URI = $URI + $Filter
+                    }
+
+                    $filterParams = @{
+                        ContentType = 'application/json'
+                        Method = 'GET'
+                        Headers = @{ Authorization = "Bearer $($AccessToken)"; ConsistencyLevel = "eventual"}
+                        Uri = $URI
+                        TimeoutSec = $TimeoutSec
+                        ErrorAction = 'Stop'
+                    }
+
+                    $sPNResponse = Invoke-RestMethod @filterParams
+
+                    if ($sPNResponse.'@odata.nextLink')
+                    {
+                        Write-Verbose 'Need to fetch more data...'
+                        #if ($sPNResponse.'@odata.count')
+                        #{
+                            Write-Verbose "Totalcount:$($sPNResponse.'@odata.count')"
+                        #}
+                        [System.Int16]$counter = '2'
+                        # create collection
+                        $sPNCollection = [System.Collections.ArrayList]@()
+
+                        # add first batch of groups to collection
+                        if ($sPNResponse.Value)
+                        {
+                            $sPNCollection += $sPNResponse.Value
+                        }
+                        else
+                        {
+                            $sPNCollection += $sPNResponse
+                        }
+
+                        do
+                        {
+                            $filterParams = @{
+                                ContentType = 'application/json'
+                                Method = 'GET'
+                                Headers = @{ Authorization = "Bearer $($AccessToken)"; ConsistencyLevel = "eventual"}
+                                Uri = $($sPNResponse.'@odata.nextLink')
+                                TimeoutSec = $TimeoutSec
+                                ErrorAction = 'Stop'
+                                Verbose = $false
+                            }
+
+                            $sPNResponse = Invoke-RestMethod @filterParams
+
+                            $sPNCollection += $sPNResponse.Value
+
+                            Write-Verbose "Pagecount:$($counter)..."
+                            $counter++
+
+                        } while ($sPNResponse.'@odata.nextLink')
+
+                        $ServicePrincipal = $sPNCollection.id
+                    }
+                    else
+                    {
+                        $ServicePrincipal = $sPNResponse.value.id
+                    }
+
+                    $retryRequest = $false
+
+                    Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
+
+                }
+                catch
+                {
+                    $_
+                    break
+                }
+            } while ($retryRequest)
+
+            if ($ServicePrincipal.count -eq 0)
+            {
+                Write-Verbose $('No ServicePrincipal found for filter "' + $($Filter) + '"! Terminate now...')
+                break
+            }
+            else
+            {
+                Write-Host "Found $($ServicePrincipal.count) ServicePrincipals for provided filter..."
+            }
+        }
+
+        if ($MultiThread)
+        {
+            #initiate runspace and make sure we are using single-threaded apartment STA
+            $Jobs = @()
+            $Sessionstate = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+            $RunspacePool = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspacePool(1, $Threads, $Sessionstate, $Host)
+            $RunspacePool.ApartmentState = 'STA'
+            $RunspacePool.Open()
+        }
+
+        # initiate counter
+        [System.Int32]$j = '1'
+
+    }
+
+    process
+    {
+        if ($MultiThread)
+        {
+            Write-Verbose 'Will run multithreaded...'
+            #create scriptblock from function
+            $scriptBlock = [System.Management.Automation.ScriptBlock]::Create((Get-ChildItem Function:\Get-MSGraphServicePrincipal).Definition)
+            
+            ForEach ($account in $ServicePrincipal)
+            {
+                 $progressParams = @{
+                    Activity = "Adding ServicePrincipal to jobs and starting job - $($account)"
+                    PercentComplete = $j / $ServicePrincipal.count * 100
+                    Status = "Remaining: $($ServicePrincipal.count - $j) out of $($ServicePrincipal.count)"
+                 }
+                 Write-Progress @progressParams
+
+                 $j++
+
+                 try {
+                    $PowershellThread = [System.Management.Automation.PowerShell]::Create().AddScript($ScriptBlock).AddParameter('ServicePrincipal',$account)
+                    [void]$PowershellThread.AddParameter('AccessToken',$AccessToken)
+                    [void]$PowershellThread.AddParameter('Authority',$Authority)
+                    [void]$PowershellThread.AddParameter('ClientId',$ClientId)
+                    [void]$PowershellThread.AddParameter('ClientSecret',$ClientSecret)
+                    [void]$PowershellThread.AddParameter('Certificate',$Certificate)
+                    [void]$PowershellThread.AddParameter('MaxRetry',$MaxRetry)
+                    [void]$PowershellThread.AddParameter('TimeoutSec',$TimeoutSec)
+                    [void]$PowershellThread.AddParameter('ShowProgress',$false)
+
+                    $PowershellThread.RunspacePool = $RunspacePool
+                    $Handle = $PowershellThread.BeginInvoke()
+                    $Job = "" | Select-Object Handle, Thread, Object
+                    $Job.Handle = $Handle
+                    $Job.Thread = $PowershellThread
+                    $Job.Object = $account
+                    $Jobs += $Job
+                 }
+                 catch {
+                    $_
+                 }
+            }
+
+            $progressParams.Status = "Ready"
+            $progressParams.Add('Completed',$true)
+            Write-Progress @progressParams
+
+        }
+        else
+        {
+
+            foreach ($account in $ServicePrincipal)
+            {
+
+                [System.Int16]$retryCount = '0'
+                [System.Boolean]$keepTrying = $true
+
+                do {
+
+                    try {
+
+                        $processingTime = [System.Diagnostics.Stopwatch]::StartNew()
+
+                        if ($ShowProgress)
+                        {
+                            $progressParams = @{
+                                Activity = "Processing ServicePrincipal - $($account)"
+                                PercentComplete = $j / $ServicePrincipal.count * 100
+                                Status = "Remaining: $($ServicePrincipal.count - $j) out of $($ServicePrincipal.count)"
+                            }
+                            Write-Progress @progressParams
+                        }
+
+                        $j++
+
+                        $body = @{
+                            requests = @(
+                                @{
+                                    url = "/servicePrincipals/$($account)"
+                                    method = 'GET'
+                                    id = '1'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/appRoleAssignments"
+                                    method = 'GET'
+                                    id = '3'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/claimsMappingPolicies"
+                                    method = 'GET'
+                                    id = '4'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/createdObjects"
+                                    method = 'GET'
+                                    id = '5'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/delegatedPermissionClassifications"
+                                    method = 'GET'
+                                    id = '6'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/endpoints"
+                                    method = 'GET'
+                                    id = '7'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/homeRealmDiscoveryPolicies"
+                                    method = 'GET'
+                                    id = '8'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/memberOf"
+                                    method = 'GET'
+                                    id = '9'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/ownedObjects"
+                                    method = 'GET'
+                                    id = '11'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/owners"
+                                    method = 'GET'
+                                    id = '12'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/tokenIssuancePolicies"
+                                    method = 'GET'
+                                    id = '13'
+                                },
+                                @{
+                                    url = "/servicePrincipals/$($account)/tokenLifetimePolicies"
+                                    method = 'GET'
+                                    id = '14'
+                                }
+                            )
+                        }
+
+                        if ($ReturnAppRoleAssignedTo)
+                        {
+                            $appRoleAssignedTo = @{
+                                    url = "/servicePrincipals/$($account)/appRoleAssignedTo"
+                                    method = 'GET'
+                                    id = '2'
+                            }
+
+                            $body.requests += $appRoleAssignedTo
+                        }
+                        <##else
+                        {
+                            $appRoleAssignedTo = @{
+                                    url = "/servicePrincipals/$($account)/appRoleAssignedTo/" + '$count'
+                                    method = 'GET'
+                                    id = '2'
+                                    headers = @{"ConsistencyLevel"="eventual"}
+                            }
+                        }##>
+
+                        if ($ReturnOauth2PermissionGrants)
+                        {
+                            $oauth2PermissionGrants = @{
+                                    url = "/servicePrincipals/$($account)/oauth2PermissionGrants"
+                                    method = 'GET'
+                                    id = '10'
+                            }
+
+                            $body.requests += $oauth2PermissionGrants
+                        }
+                        <##else
+                        {
+                            $oauth2PermissionGrants = @{
+                                    url = "/servicePrincipals/$($account)/oauth2PermissionGrants/" + '$count'
+                                    method = 'GET'
+                                    id = '10'
+                                    headers = @{"ConsistencyLevel"="eventual"}
+                            }
+                        }##>
+
+                        $restParams = @{
+                            ContentType = 'application/json'
+                            Method = 'POST'
+                            Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                            Body = $body | ConvertTo-Json -Depth 4
+                            Uri = 'https://graph.microsoft.com/beta/$batch'
+                            TimeoutSec = $TimeoutSec
+                        }
+
+                        $global:data = Invoke-RestMethod @restParams
+
+                        # create custom object
+                        $sPNObject = New-Object -TypeName psobject
+                        $sPNInfo = $null
+                        $sPNInfo = ($data.responses | Where-Object -FilterScript { $_.id -eq 1}).Body | Select-Object * -ExcludeProperty "@odata.context"
+                        if ('ResourceNotFound' -eq $sPNInfo.error.code)
+                        {
+                            Write-Verbose "ResourceNotFound thrown for:$($account)..."
+                            $sPNObject = New-Object -TypeName psobject
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name ServicePrincipal -Value $account
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name Error -Value 'ResourceNotFound'
+                            $collection += $sPNObject
+                            break
+                        }
+
+                        $sPNProperties = $sPNInfo | Get-Member -MemberType NoteProperty
+
+                        foreach ($property in $sPNProperties)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name $( $property.Name ) -Value $( $sPNInfo.$( $property.Name ) )
+                        }
+
+                        # add appRoleAssigned to object
+                        $appRoleAssignedToResponse = $data.responses | Where-Object -FilterScript {$_.id -eq 2}
+
+                        if ('200' -eq $appRoleAssignedToResponse.status)
+                        {
+                            if ($appRoleAssignedToResponse.body.'@odata.nextLink')
+                            {
+
+                                Write-Verbose 'Need to fetch more data for appRoleAssignedTo...'
+                                [System.Int16]$counter = '2'
+                                # create collection
+                                $AppRoleAssignedToCollection = [System.Collections.ArrayList]@()
+
+                                # add first batch of groups to collection
+                                $AppRoleAssignedToCollection += $appRoleAssignedToResponse.body.value | Select-Object * -ExcludeProperty "@odata.type"
+
+                                do
+                                {
+                                    if ($appRoleAssignedToResponse.body.'@odata.nextLink')
+                                    {
+                                        $uriNext = $appRoleAssignedToResponse.body.'@odata.nextLink'
+                                    }
+                                    else
+                                    {
+                                        $uriNext = $appRoleAssignedToResponse.'@odata.nextLink'
+                                    }
+                                    
+                                    $AppRoleAssignedToParams = @{
+                                        ContentType = 'application/json'
+                                        Method = 'GET'
+                                        Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                                        Uri = $uriNext
+                                        TimeoutSec = $TimeoutSec
+                                        Verbose = $false
+                                    }
+
+                                    $appRoleAssignedToResponse = Invoke-RestMethod @AppRoleAssignedToParams
+
+                                    if ($appRoleAssignedToResponse.body.value)
+                                    {
+                                        $AppRoleAssignedToCollection += $appRoleAssignedToResponse.body.value | Select-Object * -ExcludeProperty "@odata.type"
+                                    }
+                                    else
+                                    {
+                                        $AppRoleAssignedToCollection += $appRoleAssignedToResponse.value | Select-Object * -ExcludeProperty "@odata.type"
+                                    }
+
+                                    Write-Verbose "Pagecount:$($counter)..."
+                                    $counter++
+
+                                } while ($appRoleAssignedToResponse.'@odata.nextLink')
+
+                                $sPNObject | Add-Member -MemberType NoteProperty -Name AppRoleAssignedTo -Value @( $AppRoleAssignedToCollection )
+
+                            }
+                            else
+                            {
+                                $sPNObject | Add-Member -MemberType NoteProperty -Name AppRoleAssignedTo -Value @( $($appRoleAssignedToResponse.body.value | Select-Object * -ExcludeProperty "@odata.Context","@odata.type") )
+                            }
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name AppRoleAssignedTo -Value @( $($appRoleAssignedToResponse.body.error) )
+                        }
+
+                        # extract appRoleAssignments response
+                        $responseappRoleAssignments = $data.responses | Where-Object -FilterScript {$_.id -eq 3}
+
+                        if ('200' -eq $responseappRoleAssignments.status)
+                        {
+                            if ($responseappRoleAssignments.body.'@odata.nextLink')
+                            {
+
+                                Write-Verbose 'Need to fetch more data for appRoleAssignments...'
+                                [System.Int16]$counter = '2'
+                                # create collection
+                                $appRoleAssignmentsCollection = [System.Collections.ArrayList]@()
+
+                                # add first batch of groups to collection
+                                $appRoleAssignmentsCollection += $responseappRoleAssignments.body.value | Select-Object * -ExcludeProperty "@odata.type"
+
+                                do
+                                {
+                                    $appRoleAssignmentsParams = @{
+                                        ContentType = 'application/json'
+                                        Method = 'GET'
+                                        Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                                        Uri = $responseappRoleAssignments.body.'@odata.nextLink'
+                                        TimeoutSec = $TimeoutSec
+                                    }
+
+                                    $responseappRoleAssignments = Invoke-RestMethod @appRoleAssignmentsParams
+
+                                    if ($responseappRoleAssignments.body.value)
+                                    {
+                                        $appRoleAssignmentsCollection += $responseappRoleAssignments.body.value | Select-Object * -ExcludeProperty "@odata.type"
+                                    }
+                                    else
+                                    {
+                                        $appRoleAssignmentsCollection += $responseappRoleAssignments.value | Select-Object * -ExcludeProperty "@odata.type"
+                                    }
+
+                                    Write-Verbose "Pagecount:$($counter)..."
+                                    $counter++
+
+                                } while ($responseappRoleAssignments.body.'@odata.nextLink')
+
+                                $sPNObject | Add-Member -MemberType NoteProperty -Name AppRoleAssignments -Value @( $appRoleAssignmentsCollection )
+
+                            }
+                            else
+                            {
+                                $sPNObject | Add-Member -MemberType NoteProperty -Name AppRoleAssignments -Value @( $($responseappRoleAssignments.body.value | Select-Object * -ExcludeProperty "@odata.type") )
+                            }
+
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name AppRoleAssignments -Value @( $($responseappRoleAssignments.body.error) )
+                        }
+
+                        $claimsMappingPoliciesResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 4}
+
+                        if ('200' -eq $claimsMappingPoliciesResponse.status)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name ClaimsMappingPolicies -Value  @( $($claimsMappingPoliciesResponse.body.value) )
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name ClaimsMappingPolicies -Value  @( $($claimsMappingPoliciesResponse.body.error) )
+                        }
+
+                        $createdObjectsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 5}
+
+                        if ('200' -eq $createdObjectsResponse.status)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name CreatedObjects -Value  @( $($createdObjectsResponse.body.value | Select-Object * -ExcludeProperty "@odata.type") )
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name CreatedObjects -Value  @( $($createdObjectsResponse.body.error) )
+                        }
+
+                        $delegatedPermissionClassificationsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 6}
+
+                        if ('200' -eq $delegatedPermissionClassificationsResponse.status)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name DelegatedPermissionClassifications -Value  @( $($delegatedPermissionClassificationsResponse.body.value | Select-Object * -ExcludeProperty "@odata.type") )
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name DelegatedPermissionClassifications -Value  @( $($delegatedPermissionClassificationsResponse.body.error) )
+                        }
+
+                        $endpointsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 7}
+
+                        if ('200' -eq $endpointsResponse.status)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name Endpoints -Value  @( $($endpointsResponse.body.value) )
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name Endpoints -Value  @( $($endpointsResponse.body.error) )
+                        }
+
+                        $homeRealmDiscoveryPoliciesResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 8}
+
+                        if ('200' -eq $homeRealmDiscoveryPoliciesResponse.status)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name HomeRealmDiscoveryPolicies -Value  @( $($homeRealmDiscoveryPoliciesResponse.body.value) )
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name HomeRealmDiscoveryPolicies -Value  @( $($homeRealmDiscoveryPoliciesResponse.body.error) )
+                        }
+
+                        $memberOfResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 9}
+
+                        if ('200' -eq $memberOfResponse.status)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value  @( $($memberOfResponse.body.value) )
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value  @( $($memberOfResponse.body.error) )
+                        }
+
+
+                        $oauth2PermissionGrantsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 10}
+
+                        if ('200' -eq $oauth2PermissionGrantsResponse.status)
+                        {
+                            if ($oauth2PermissionGrantsResponse.body.'@odata.nextLink')
+                            {
+
+                                Write-Verbose 'Need to fetch more data for oauth2PermissionGrants...'
+                                [System.Int16]$counter = '2'
+                                # create collection
+                                $oauth2PermissionGrantsCollection = [System.Collections.ArrayList]@()
+
+                                # add first batch of groups to collection
+                                $oauth2PermissionGrantsCollection += $oauth2PermissionGrantsResponse.body.value | Select-Object * -ExcludeProperty "@odata.type"
+
+                                do
+                                {
+                                    if ($oauth2PermissionGrantsResponse.body.'@odata.nextLink')
+                                    {
+                                        $uriNext = $oauth2PermissionGrantsResponse.body.'@odata.nextLink'
+                                    }
+                                    else
+                                    {
+                                        $uriNext = $oauth2PermissionGrantsResponse.'@odata.nextLink'
+                                    }
+                                    
+                                    $AppRoleAssignedToParams = @{
+                                        ContentType = 'application/json'
+                                        Method = 'GET'
+                                        Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                                        Uri = $uriNext
+                                        TimeoutSec = $TimeoutSec
+                                        Verbose = $false
+                                    }
+
+                                    $oauth2PermissionGrantsResponse = Invoke-RestMethod @AppRoleAssignedToParams
+
+                                    if ($oauth2PermissionGrantsResponse.body.value)
+                                    {
+                                        $oauth2PermissionGrantsCollection += $oauth2PermissionGrantsResponse.body.value | Select-Object * -ExcludeProperty "@odata.type"
+                                    }
+                                    else
+                                    {
+                                        $oauth2PermissionGrantsCollection += $oauth2PermissionGrantsResponse.value | Select-Object * -ExcludeProperty "@odata.type"
+                                    }
+
+                                    Write-Verbose "Pagecount:$($counter)..."
+                                    $counter++
+
+                                } while ($oauth2PermissionGrantsResponse.'@odata.nextLink')
+
+                                $sPNObject | Add-Member -MemberType NoteProperty -Name OAuth2PermissionGrants -Value @( $oauth2PermissionGrantsCollection )
+
+                            }
+                            else
+                            {
+                                $sPNObject | Add-Member -MemberType NoteProperty -Name OAuth2PermissionGrants -Value  @( $($oauth2PermissionGrantsResponse.body.value | Select-Object * -ExcludeProperty "@odata.context") )
+                            }
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name OAuth2PermissionGrants -Value  @( $($oauth2PermissionGrantsResponse.body.error) )
+                        }
+
+                        $ownedObjectsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 11}
+
+                        if ('200' -eq $ownedObjectsResponse.status)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name OwnedObjects -Value  @( $($ownedObjectsResponse.body.value | Select-Object * -ExcludeProperty "@odata.context") )
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name OwnedObjects -Value  @( $($ownedObjectsResponse.body.error) )
+                        }
+
+                        $ownersResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 12}
+
+                        if ('200' -eq $ownersResponse.status)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name Owners -Value  @( $($ownersResponse.body.value | Select-Object * -ExcludeProperty "@odata.context") )
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name Owners -Value  @( $($ownersResponse.body.error) )
+                        }
+
+                        $tokenIssuancePoliciesResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 13}
+
+                        if ('200' -eq $tokenIssuancePoliciesResponse.status)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name TokenIssuancePolicies -Value  @( $($tokenIssuancePoliciesResponse.body.value | Select-Object * -ExcludeProperty "@odata.context") )
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name TokenIssuancePolicies -Value  @( $($tokenIssuancePoliciesResponse.body.error) )
+                        }
+
+                        $tokenLifetimePoliciesResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 14}
+
+                        if ('200' -eq $tokenLifetimePoliciesResponse.status)
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name TokenLifetimePolicies -Value  @( $($tokenLifetimePoliciesResponse.body.value | Select-Object * -ExcludeProperty "@odata.context") )
+                        }
+                        else
+                        {
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name TokenLifetimePolicies -Value  @( $($tokenLifetimePoliciesResponse.body.error) )
+                        }
+
+                        $collection += $sPNObject
+
+                        if ($ShowProgress)
+                        {
+                            $progressParams.Status = "Ready"
+                            $progressParams.Add('Completed',$true)
+                            Write-Progress @progressParams
+                        }
+
+                        $processingTime.Stop()
+                        $keepTrying = $false
+                        Write-Verbose "ServicePrincipal processing time:$($processingTime.Elapsed.ToString())"
+
+                    }
+                    catch {
+
+                    $statusCode = $_.Exception.Response.StatusCode.value__
+
+                    if ('401' -eq $statusCode)
+                    {
+
+                        Write-Verbose "HTTP error $($statusCode) thrown. Will try to acquire new access token..."
+                        $acquireToken = @{
+                            Authority = $Authority
+                            ClientId = $ClientId
+                            ClientSecret = $ClientSecret
+                            Certificate = $Certificate
+                        }
+
+                        $AccessToken = (Get-AccessTokenNoLibraries @acquireToken).access_token
+
+                        if ([System.String]::IsNullOrWhiteSpace($AccessToken))
+                        {
+                            Write-Verbose "Couldn't acquire a token. Will stop now..."
+
+                            $sPNObject = New-Object -TypeName psobject
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name User -Value $account
+                            $sPNObject | Add-Member -MemberType NoteProperty -Name Error -Value 'Could not acquire access token'
+                            $collection += $sPNObject
+                            break
+                        }
+
+                        Write-Verbose 'Setting accesstoken...'
+                        $psBoundParameters['AccessToken'] = $AccessToken
+
+                        # increase retrycount
+                        $retryCount++
+                        Write-Verbose "Retrycount:$($retryCount)"
+
+                    }
+                    elseif ('403' -eq $statusCode)
+                    {
+                        Write-Verbose "Error for resource $($_.Exception.Response.ResponseUri.ToString()) with StatusCode $($_.Exception.Response.StatusCode.ToString())"
+                        # increase retrycount
+                        $retryCount++
+                    }
+                    elseif ('429' -eq $statusCode)
+                    {
+
+                        Write-Verbose "HTTP error $($statusCode) thrown. Will backoff..."
+                        Start-Sleep -Seconds 2
+
+                    }
+                    elseif ('503' -eq $statusCode)
+                    {
+
+                        Write-Verbose "HTTP error $($statusCode) thrown. Will retry..."
+                        # increase retrycount
+                        $retryCount++
+                        Write-Verbose "Retrycount:$($retryCount)"
+
+                    }
+                    else
+                    {
+                        $sPNObject = New-Object -TypeName psobject
+                        $sPNObject | Add-Member -MemberType NoteProperty -Name ServicePrincipal -Value $account
+                        $sPNObject | Add-Member -MemberType NoteProperty -Name Error -Value $_.Exception
+                        $collection += $sPNObject
+                        Write-Verbose "Error occured for account $($account)..."
+                        break
+                    }
+
+                    if ($retryCount -eq $MaxRetry)
+                    {
+                        Write-Verbose 'MaxRetries done. Skip this ServicePrincipal now...'
+                        $keepTrying = $false
+
+                        $sPNObject = New-Object -TypeName psobject
+                        $sPNObject | Add-Member -MemberType NoteProperty -Name ServicePrincipal -Value $account
+                        $sPNObject | Add-Member -MemberType NoteProperty -Name Error -Value $_.Exception
+                        $collection += $sPNObject
+                    }
+                }
+
+                } while ($keepTrying)
+
+            }
+
+        }
+    }
+
+    end
+    {
+        #monitor and retrieve the created jobs
+        if ($MultiThread)
+        {
+            $SleepTimer = 1000
+            While (@($Jobs | Where-Object {$_.Handle -ne $Null}).count -gt 0) {
+
+                Write-Progress `
+                    -id 1 `
+                    -Activity "Waiting for Jobs - $($Threads - $($RunspacePool.GetAvailableRunspaces())) of $Threads threads running" `
+                    -PercentComplete (($Jobs.count - $($($Jobs | Where-Object {$_.Handle.IsCompleted -eq $False}).count)) / $Jobs.Count * 100) `
+                    -Status "$(@($($Jobs | Where-Object {$_.Handle.IsCompleted -eq $False})).count) remaining out of $($Jobs.Count)"
+
+                ForEach ($Job in $($Jobs | Where-Object {$_.Handle.IsCompleted -eq $true})) {
+                    $Job.Thread.EndInvoke($Job.Handle)
+                    $Job.Thread.Dispose()
+                    $Job.Thread = $Null
+                    $Job.Handle = $Null
+                }
+
+                # kill all incomplete threads when hit "CTRL+q"
+                if ($Host.UI.RawUI.KeyAvailable) {
+                    $KeyInput = $Host.UI.RawUI.ReadKey("IncludeKeyUp,NoEcho")
+                    if (($KeyInput.ControlKeyState -cmatch '(Right|Left)CtrlPressed') -and ($KeyInput.VirtualKeyCode -eq '81')) {
+                        Write-Host -fore red "Kill all incomplete threads..."
+                            ForEach ($Job in $($Jobs | Where-Object {$_.Handle.IsCompleted -eq $False})) {
+                                Write-Host -fore yellow "Stopping job $($Job.Object)..."
+                                $Job.Thread.Stop()
+                                $Job.Thread.Dispose()
+                             }
+                        Write-Host -fore red "All jobs terminated..."
+                        break
+                    }
+                }
+
+                Start-Sleep -Milliseconds $SleepTimer
+
+            }
+
+            # clean-up
+            Write-Verbose 'Perform cleanup of runspaces...'
+            $RunspacePool.Close() | Out-Null
+            $RunspacePool.Dispose() | Out-Null
+            [System.GC]::Collect()
+        }
+        else
+        {
+            $collection
+        }
+
+        $timer.Stop()
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
+    }
+}
+
