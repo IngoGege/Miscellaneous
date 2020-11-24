@@ -943,6 +943,10 @@ function global:Get-MSGraphGroup
             The parameter Filter can be used, when you want to use a complex filter.
         .PARAMETER ShowProgress
             The parameter ShowProgress will show the progress of the script.
+        .PARAMETER ReturnMembers
+            Switch to return members of group.
+        .PARAMETER ReturnMembersTransitive
+            Switch to return transitive members of group.
         .PARAMETER Threads
             The parameter Threads defines how many Threads will be created. Only used in combination with MultiThread.
         .PARAMETER MultiThread
@@ -1004,38 +1008,42 @@ function global:Get-MSGraphGroup
         $ReturnMembers,
 
         [parameter( Position=6)]
+        [System.Management.Automation.SwitchParameter]
+        $ReturnMembersTransitive,
+
+        [parameter( Position=7)]
         [System.Int16]
         $Threads = '20',
 
-        [parameter( Position=7)]
+        [parameter( Position=8)]
         [System.Management.Automation.SwitchParameter]
         $MultiThread,
 
-        [parameter( Position=8)]
+        [parameter( Position=9)]
         [System.String]
         $Authority,
 
-        [parameter( Position=9)]
+        [parameter( Position=10)]
         [System.String]
         $ClientId,
 
-        [parameter( Position=10)]
+        [parameter( Position=11)]
         [System.String]
         $ClientSecret,
 
-        [parameter( Position=11)]
+        [parameter( Position=12)]
         [System.Security.Cryptography.X509Certificates.X509Certificate2]
         $Certificate,
 
-        [parameter( Position=12)]
+        [parameter( Position=13)]
         [System.Int16]
         $MaxRetry = '3',
 
-        [parameter( Position=13)]
+        [parameter( Position=14)]
         [System.Int32]
         $TimeoutSec = '15',
 
-        [parameter( Position=14)]
+        [parameter( Position=15)]
         [System.Int32]
         $MaxFilterResult
 
@@ -1539,13 +1547,23 @@ function global:Get-MSGraphGroup
                                 }
                             )
                         }
-                        
+
                         if ($ReturnMembers)
                         {
                             $members = @{
                                     url = "/groups/$id/members"
                                     method = 'GET'
                                     id = '4'
+                            }
+
+                        }
+                        elseif ($ReturnMembersTransitive)
+                        {
+                            $members = @{
+                                    url = "/groups/$id/transitiveMembers"
+                                    method = 'GET'
+                                    id = '4'
+                                    #headers = @{"ConsistencyLevel" = "eventual"}
                             }
 
                         }
@@ -1580,7 +1598,7 @@ function global:Get-MSGraphGroup
                         $responseGroup = $data.responses | Where-Object -FilterScript { $_.id -eq 1}
                         $groupInfo = $responseGroup.Body | Select-Object * -ExcludeProperty "@odata.context"
 
-                        if (($responseGroup.status -ne 200) -and ('MailboxNotEnabledForRESTAPI|UnsupportedQueryOption' -match $responseGroup.body.error.code))
+                        if (($responseGroup.status -ne 200) -and ('MailboxNotEnabledForRESTAPI|UnsupportedQueryOption|AppOnlyAccessNotEnabledForTarget' -match $responseGroup.body.error.code))
                         {
                             Write-Verbose "Error MailboxNotEnabledForRESTAPI|UnsupportedQueryOption thrown. Will try again without certain properties..."
 
@@ -1635,7 +1653,7 @@ function global:Get-MSGraphGroup
 
                         if ('200' -eq $responseMember.status)
                         {
-                            if (-not $ReturnMembers)
+                            if ((-not $ReturnMembers) -and (-not $ReturnMembersTransitive))
                             {
                                 $groupObject | Add-Member -MemberType NoteProperty -Name MemberCount -Value $($responseMember.body)
                             }
