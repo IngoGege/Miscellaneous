@@ -1976,47 +1976,55 @@ function global:Get-MSGraphUser
 
         [parameter( Position=5)]
         [System.Management.Automation.SwitchParameter]
-        $GetAuthMethods,
+        $ListAll,
 
         [parameter( Position=6)]
         [System.Management.Automation.SwitchParameter]
-        $ReturnDeletedUsers,
+        $GetAuthMethods,
 
         [parameter( Position=7)]
         [System.Management.Automation.SwitchParameter]
-        $ShowProgress,
+        $ReturnDeletedUsers,
 
         [parameter( Position=8)]
+        [System.Management.Automation.SwitchParameter]
+        $ShowProgress,
+
+        [parameter( Position=9)]
         [System.Int16]
         $Threads = '20',
 
-        [parameter( Position=9)]
+        [parameter( Position=10)]
         [System.Management.Automation.SwitchParameter]
         $MultiThread,
 
-        [parameter( Position=9)]
+        [parameter( Position=11)]
         [System.String]
         $Authority,
 
-        [parameter( Position=10)]
+        [parameter( Position=12)]
         [System.String]
         $ClientId,
 
-        [parameter( Position=11)]
+        [parameter( Position=13)]
         [System.String]
         $ClientSecret,
 
-        [parameter( Position=12)]
+        [parameter( Position=14)]
         [System.Security.Cryptography.X509Certificates.X509Certificate2]
         $Certificate,
 
-        [parameter( Position=13)]
+        [parameter( Position=15)]
         [System.Int16]
         $MaxRetry = '3',
 
-        [parameter( Position=14)]
+        [parameter( Position=16)]
         [System.Int32]
-        $TimeoutSec = '15'
+        $TimeoutSec = '15',
+
+        [parameter( Position=17)]
+        [System.Int32]
+        $MaxFilterResult
 
     )
 
@@ -2311,7 +2319,7 @@ function global:Get-MSGraphUser
             "userPrincipalName",
             "userType")
 
-        if ($Filter)
+        if ($Filter -or $ListAll)
         {
 
             [System.Boolean]$retryRequest = $true
@@ -2322,17 +2330,33 @@ function global:Get-MSGraphUser
                     Write-Verbose 'Found custom Filter. Will try to find user based on...'
                     if ($ReturnDeletedUsers)
                     {
-                        $URI = 'https://graph.microsoft.com/beta/directory/deletedItems/microsoft.graph.user?$filter='
+                        if ($ListAll)
+                        {
+                            $URI = 'https://graph.microsoft.com/beta/directory/deletedItems/microsoft.graph.user'
+                        }
+                        else
+                        {
+                            $URI = 'https://graph.microsoft.com/beta/directory/deletedItems/microsoft.graph.user?$filter='
+                        }
                     }
                     else
                     {
-                        $URI = 'https://graph.microsoft.com/beta/users?$filter='
+                        if ($ListAll)
+                        {
+                            $URI = 'https://graph.microsoft.com/beta/users'
+                        }
+                        else
+                        {
+                            $URI = 'https://graph.microsoft.com/beta/users?$filter='
+                            $URI = $URI + $Filter
+                        }
                     }
+
                     $filterParams = @{
                         ContentType = 'application/json'
                         Method = 'GET'
                         Headers = @{ Authorization = "Bearer $($AccessToken)"}
-                        Uri = $URI + $Filter
+                        Uri = $URI
                         TimeoutSec = $TimeoutSec
                         ErrorAction = 'Stop'
                     }
@@ -2375,6 +2399,13 @@ function global:Get-MSGraphUser
                             Write-Verbose "Pagecount:$($counter)..."
                             $counter++
 
+                            if ( $MaxFilterResult -and ($userCollection.Count -ge $MaxFilterResult))
+                            {
+                                Write-Verbose "MaxFilterResult reached. Will stop searching now..."
+                                $userResponse.'@odata.nextLink' = $null
+                                $userCollection = $userCollection  | Select-Object -First $MaxFilterResult
+                            }
+
                         } while ($userResponse.'@odata.nextLink')
 
                         $User = $userCollection.id
@@ -2399,7 +2430,6 @@ function global:Get-MSGraphUser
             if ($User.count -eq 0)
             {
                 Write-Verbose $('No user found for filter "' + $($Filter) + '"! Terminate now...')
-                break
             }
             else
             {
