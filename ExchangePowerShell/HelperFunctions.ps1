@@ -330,16 +330,22 @@ function global:Prompt
         .DESCRIPTION
             The function customize your PowerShell window based on your connection: Either EXO or SCC.
     #>
-    if ((Get-PSSession).ComputerName -match 'compliance')
+    $openSessions = Get-PSSession | Where-Object -FilterScript {$_.State -eq 'Opened'}
+    $connectString = ''
+    foreach ( $session in $openSessions)
     {
-        $ConnectedTo = 'SCC'
-    }
-    else
-    {
-        $ConnectedTo = 'EXO'
+        if ($session.ComputerName -match 'compliance')
+        {
+            $ConnectedTo = 'SCC'
+        }
+        else
+        {
+            $ConnectedTo = 'EXO'
+        }
+        $connectString += "Connected to $($ConnectedTo) as $($session.Runspace.ConnectionInfo.Credential.UserName) "
     }
 
-    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " Connected to $($ConnectedTo) as $((Get-PSSession | Where-Object -FilterScript {$_.State -eq 'Opened'} ).Runspace.ConnectionInfo.Credential.UserName)"
+    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " $($connectString) ProccessID:$PID"
     Write-Host '[' -NoNewline
     Write-Host (Get-Date -UFormat '%T')-NoNewline
     Write-Host ']:' -NoNewline
@@ -1598,7 +1604,7 @@ function global:Get-MSGraphGroup
                         $responseGroup = $data.responses | Where-Object -FilterScript { $_.id -eq 1}
                         $groupInfo = $responseGroup.Body | Select-Object * -ExcludeProperty "@odata.context"
 
-                        if (($responseGroup.status -ne 200) -and ('MailboxNotEnabledForRESTAPI|UnsupportedQueryOption|AppOnlyAccessNotEnabledForTarget' -match $responseGroup.body.error.code))
+                        if (($responseGroup.status -ne 200) -and ('MailboxNotEnabledForRESTAPI|UnsupportedQueryOption|AppOnlyAccessNotEnabledForTarget|ErrorAccessDenied' -match $responseGroup.body.error.code))
                         {
                             Write-Verbose "Error MailboxNotEnabledForRESTAPI|UnsupportedQueryOption thrown. Will try again without certain properties..."
 
@@ -5522,5 +5528,225 @@ function global:Get-ConnectivityLogs
         Write-Verbose "Done!"
     }
 
+}
+
+function global:Search-MSTeamsUser
+{
+    <#
+    .SYNOPSIS
+        This function is intended to query Microsoft Teams substrate for give address.
+    .DESCRIPTION
+        This function is intended to query Microsoft Teams substrate for give address and return found objects.
+    .PARAMETER EmailAddress
+        The parameter EmailAddress defines the e-mail address, which we are searching.
+    .EXAMPLE
+        Search-MSTeamsUser -EmailAddress MeganB
+    .NOTES
+
+    .LINK
+        https://ingogegenwarth.wordpress.com/
+    #>
+    [CmdletBinding()]
+    param(
+        [parameter(
+            mandatory = $true,
+            Position = 0)]
+        [System.String]
+        $EmailAddress
+
+    )
+
+    begin
+    {
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+        $Error.Clear()
+
+        $collection = [System.Collections.ArrayList]@()
+
+        $Timeout = '20'
+
+        # thanks to https://gsexdev.blogspot.com/
+        function Show-OAuthWindow
+        {
+            [CmdletBinding()]
+            param (
+                [System.Uri]
+                $Url
+
+            )
+            ## Start Code Attribution
+            ## Show-AuthWindow function is the work of the following Authors and should remain with the function if copied into other scripts
+            ## https://foxdeploy.com/2015/11/02/using-powershell-and-oauth/
+            ## https://blogs.technet.microsoft.com/ronba/2016/05/09/using-powershell-and-the-office-365-rest-api-with-oauth/
+            ## End Code Attribution
+            Add-Type -AssemblyName System.Web
+            Add-Type -AssemblyName System.Windows.Forms
+
+            $form = New-Object -TypeName System.Windows.Forms.Form -Property @{ Width = 440; Height = 640 }
+            $web = New-Object -TypeName System.Windows.Forms.WebBrowser -Property @{ Width = 420; Height = 600; Url = ($url) }
+            $Navigated = {
+                if ( ($web.DocumentText -match "document.location.replace") -or ($web.Url.AbsoluteUri -match "code=[^&]*") ) {
+                    $Script:oAuthCode = [regex]::match($web.DocumentText, "code=(.*?)\\u0026").Groups[1].Value
+                    if ([System.String]::IsNullOrEmpty($Script:oAuthCode))
+                    {
+                        if ($web.Url.AbsoluteUri -match "error=[^&]*")
+                        {
+                            $Script:oAuthCode = [System.Web.HttpUtility]::UrlDecode($web.Url.AbsoluteUri)
+                        }
+                        else
+                        {
+                            $Script:oAuthCode = [System.Web.HttpUtility]::ParseQueryString($web.Url.AbsoluteUri)[0]
+                        }
+                    }
+                    $form.Close();
+                }
+            }
+            $web.ScriptErrorsSuppressed = $true
+            $web.Add_Navigated($Navigated)
+            $form.Controls.Add($web)
+            $form.Add_Shown( { $form.Activate() })
+            $form.ShowDialog() | Out-Null
+            return $Script:oAuthCode
+        }
+
+        try {
+
+            Add-Type -AssemblyName System.Web
+            $ClientID = '1fec8e78-bce4-4aaf-ab1b-5451cc387264'
+            $audience = 'https://teams.microsoft.com'
+            # parameters for auth code flow
+            $RedirectURI = 'https://login.microsoftonline.com/common/oauth2/nativeclient'
+            $state = Get-Random
+            $authURI = "https://login.microsoftonline.com/Common"
+            $authURI += "/oauth2/authorize?client_id=$ClientId"
+            $authURI += "&response_type=code&redirect_uri= " + [System.Web.HttpUtility]::UrlEncode($RedirectURI)
+            $authURI += "&response_mode=query&resource=" + [System.Web.HttpUtility]::UrlEncode($audience) + "&state=$state"
+            $authURI += "&prompt=select_account"
+
+            # acquire auth code from AAD
+            $authCode = Show-OAuthWindow -Url $authURI
+
+            $body = @{
+                "grant_type" = "authorization_code";
+                "client_id" = "$ClientId";
+                "code" = $authCode;
+                "redirect_uri" = $RedirectURI
+            }
+
+            $paramsTokenRequest = @{
+                Body = $body
+                ContentType = 'application/x-www-form-urlencoded'
+                Method = 'Post'
+                TimeoutSec = $Timeout
+                Uri = "https://login.microsoftonline.com/common/oauth2/token"
+            }
+
+            # acquire access token
+            $tokenRequest = Invoke-RestMethod @paramsTokenRequest
+            $accessToken = $tokenRequest.access_token
+
+            # retrieve authz config
+            $headersMSTeamsAuthz = @{}
+            $headersMSTeamsAuthz.Add('Accept','application/json, text/plain, */*')
+            $headersMSTeamsAuthz.Add('Accept-Encoding','gzip, deflate')
+            $headersMSTeamsAuthz.Add('Authorization',"Bearer $($accessToken)")
+            $headersMSTeamsAuthz.Add('Charset','utf-8')
+
+            $paramsTeamsAuthz = @{
+                ContentType = 'application/json; charset=utf-8'
+                Headers = $headersMSTeamsAuthz
+                Method = 'POST'
+                TimeoutSec = $Timeout
+                Uri = 'https://teams.microsoft.com/api/authsvc/v1.0/authz'
+            }
+
+            $teamsAuthZ = Invoke-RestMethod @paramsTeamsAuthz
+
+        }
+        catch {
+            $_
+            break
+        }
+
+    }
+
+    process
+    {
+        if (-not [System.String]::IsNullOrEmpty($teamsAuthZ.regionGtms.middleTier))
+        {
+            try {
+                $headersMSTeams = @{}
+                $headersMSTeams.Add('Authorization',"Bearer $($accessToken)")
+                $headersMSTeams.Add('Accept','application/json, text/plain, */*')
+                $headersMSTeams.Add('Accept-Encoding','gzip, deflate, br')
+
+                $paramsTeamsRequest = @{
+                    Body = $($EmailAddress | ConvertTo-Json -Depth 2)
+                    ContentType = 'application/json'
+                    Headers = $headersMSTeams
+                    Method = 'POST'
+                    TimeoutSec = $Timeout
+                    Uri = $teamsAuthZ.regionGtms.middleTier + '/beta/users/searchV2?includeDLs=true&includeBots=true&enableGuest=true&source=addToTeam&skypeTeamsInfo=true'
+                }
+
+                $searchRequest = Invoke-RestMethod @paramsTeamsRequest
+
+                $collection += $searchRequest.value
+            }
+            catch {
+                $_
+            }
+        }
+        else
+        {
+            Write-Verbose 'Could not detect endpoint!...'
+            break
+        }
+    }
+
+    end
+    {
+        $collection
+
+        $timer.Stop()
+
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
+    }
+}
+
+function global:ConvertFrom-EncodedCommand
+{
+    <#
+    .SYNOPSIS
+        This function is intended to decode a string.
+    .DESCRIPTION
+        This function is intended to decode a string, which was used as value for the PowerShell parameter EncodedCommand.
+    .PARAMETER EncodedString
+        The parameter EncodedString takes the string to be decoded.
+    .EXAMPLE
+        ConvertFrom-EncodedCommand -EncodedString JABzACAAPQAgACc...QAgACQAZgAgAC0A
+    .NOTES
+
+    .LINK
+        https://ingogegenwarth.wordpress.com/
+    #>
+    [CmdletBinding()]
+    param(
+        [parameter(
+            mandatory = $true,
+            Position = 0)]
+        [System.String]
+        $EncodedString
+    )
+    
+    try {
+        [System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String($EncodedString))
+    }
+    catch {
+        $_
+    }
 }
 
