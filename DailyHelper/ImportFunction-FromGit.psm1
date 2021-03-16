@@ -57,7 +57,12 @@ function global:ImportFunction-FromGit
 
         if ($AlreadyFunction)
         {
-            Invoke-Expression $code
+            # create temporary file for import
+            $fileName = "$(Get-Random).psm1"
+            $tempFile = New-Item -Path $env:TEMP -Name $fileName -Value $code -Force
+            Import-Module $tempFile.FullName -Global -DisableNameChecking
+            # cleanup of temporary file
+            Remove-Item $tempFile -Force
         }
         else
         {
