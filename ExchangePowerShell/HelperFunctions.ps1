@@ -330,6 +330,7 @@ function global:Prompt
         .DESCRIPTION
             The function customize your PowerShell window based on your connection: Either EXO or SCC.
     #>
+    [System.Boolean]$elevated = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')
     $openSessions = Get-PSSession | Where-Object -FilterScript {$_.State -eq 'Opened'}
     $connectString = ''
     foreach ( $session in $openSessions)
@@ -345,7 +346,7 @@ function global:Prompt
         $connectString += "Connected to $($ConnectedTo) as $($session.Runspace.ConnectionInfo.Credential.UserName) "
     }
 
-    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " $($connectString) ProccessID:$PID"
+    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " $($connectString) ProccessID:$PID Elevated:$elevated"
     Write-Host '[' -NoNewline
     Write-Host (Get-Date -UFormat '%T')-NoNewline
     Write-Host ']:' -NoNewline
