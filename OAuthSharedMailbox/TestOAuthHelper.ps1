@@ -806,17 +806,19 @@ function global:Create-CalendarEvent
                     }
 "@
 
+                $body = [System.Text.Encoding]::UTF8.GetBytes($event)
+
                 $param = @{
                     Method = 'Post'
                     Uri = $baseURI + $mailbox + '/calendar/events'
                     Headers = @{
                         'Authorization' = "$($AccessToken)";
                         'X-AnchorMailbox' = $($mailbox);
-                        'Content-type' = 'application/json'
+                        'Content-type' = 'application/json; charset=utf-8'
                         }
                 }
 
-                $result = Invoke-RestMethod @param -Body $event
+                $result = Invoke-RestMethod @param -Body $body
 
             }
             catch
