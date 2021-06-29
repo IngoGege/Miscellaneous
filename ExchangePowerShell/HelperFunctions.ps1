@@ -390,7 +390,7 @@ function global:Get-ManagedFolderAssistantLog
             Write-Verbose "Processing $($ID)..."
             $data = New-Object -TypeName PSObject
             $data | add-member -type NoteProperty -Name Identity -Value $ID
-            $data | add-member -type NoteProperty -Name Ecl -Value $(([xml](Export-MailboxDiagnosticLogs -Identity $ID -ExtendedProperties).MailboxLog).Properties.MailboxTable.Property | ? name -Like 'elc*')
+            $data | add-member -type NoteProperty -Name Ecl -Value $(([xml](Export-MailboxDiagnosticLogs -Identity $ID -ExtendedProperties).MailboxLog).Properties.MailboxTable.Property | ? name -match 'elc' | ? name -NotMatch 'funnel')
             $collection.Add($data) | Out-Null
         }
     }
@@ -1934,6 +1934,8 @@ function global:Get-MSGraphUser
             How many retries for each user in case of error.
         .PARAMETER TimeoutSec
             TimeoutSec for Cmdlet Invoke-RestMethod.
+         PARAMETER MinAttributeSet
+            Request will be done only for default returned attributes
         .EXAMPLE
             # retrieve data for a specific user by providing a previoues retreieved Bearer access token
             Get-MSGraphUser -User ingo.gegenwarth@contoso.com -GetMailboxSettings -GetDeltaToken -GetAuthMethods -AccessToken eyJ0eXAiOiJKV1QiLC...AwNzY5OTE4LCJuYmYiO -Verbose
@@ -2031,7 +2033,11 @@ function global:Get-MSGraphUser
 
         [parameter( Position=17)]
         [System.Int32]
-        $MaxFilterResult
+        $MaxFilterResult,
+
+        [parameter( Position=18)]
+        [System.Management.Automation.SwitchParameter]
+        $MinAttributeSet
 
     )
 
@@ -2595,59 +2601,73 @@ function global:Get-MSGraphUser
                         }
                         else
                         {
-                            $body = @{
+                            if ($MinAttributeSet)
+                            {
+                                $body = @{
                                 requests = @(
                                     @{
-                                        url = "/users/$($account)" + '?$select=' + $($selectProperties -join ',')
+                                        url = "/users/$($account)"
                                         method = 'GET'
                                         id = '1'
-                                    },
-                                    @{
-                                        url = "/users/$($account)/manager"
-                                        method = 'GET'
-                                        id = '2'
-                                    },
-                                    @{
-                                        url = "/users/$($account)/memberof"
-                                        method = 'GET'
-                                        id = '3'
-                                    },
-                                    @{
-                                        url = "/users/$($account)/licenseDetails"
-                                        method = 'GET'
-                                        id = '4'
-                                    },
-                                    @{
-                                        url = "/users/$($account)/registeredDevices"
-                                        method = 'GET'
-                                        id = '9'
-                                    },
-                                    @{
-                                        url = "/users/$($account)/ownedDevices"
-                                        method = 'GET'
-                                        id = '10'
-                                    },
-                                    @{
-                                        url = "/users/$($account)/ownedObjects"
-                                        method = 'GET'
-                                        id = '11'
-                                    },
-                                    @{
-                                        url = "/users/$($account)/createdObjects"
-                                        method = 'GET'
-                                        id = '12'
-                                    },
-                                    @{
-                                        url = "/users/$($account)/drive"
-                                        method = 'GET'
-                                        id = '13'
-                                    },
-                                    @{
-                                        url = "/users/$($account)/oauth2PermissionGrants"
-                                        method = 'GET'
-                                        id = '14'
-                                    }
-                                )
+                                    })
+                                }
+                            }
+                            else
+                            {
+                                $body = @{
+                                    requests = @(
+                                        @{
+                                            url = "/users/$($account)" + '?$select=' + $($selectProperties -join ',')
+                                            method = 'GET'
+                                            id = '1'
+                                        },
+                                        @{
+                                            url = "/users/$($account)/manager"
+                                            method = 'GET'
+                                            id = '2'
+                                        },
+                                        @{
+                                            url = "/users/$($account)/memberof"
+                                            method = 'GET'
+                                            id = '3'
+                                        },
+                                        @{
+                                            url = "/users/$($account)/licenseDetails"
+                                            method = 'GET'
+                                            id = '4'
+                                        },
+                                        @{
+                                            url = "/users/$($account)/registeredDevices"
+                                            method = 'GET'
+                                            id = '9'
+                                        },
+                                        @{
+                                            url = "/users/$($account)/ownedDevices"
+                                            method = 'GET'
+                                            id = '10'
+                                        },
+                                        @{
+                                            url = "/users/$($account)/ownedObjects"
+                                            method = 'GET'
+                                            id = '11'
+                                        },
+                                        @{
+                                            url = "/users/$($account)/createdObjects"
+                                            method = 'GET'
+                                            id = '12'
+                                        },
+                                        @{
+                                            url = "/users/$($account)/drive"
+                                            method = 'GET'
+                                            id = '13'
+                                        },
+                                        @{
+                                            url = "/users/$($account)/oauth2PermissionGrants"
+                                            method = 'GET'
+                                            id = '14'
+                                        }
+                                    )
+                                }
                             }
 
                             if ($GetMailboxSettings)
@@ -2738,311 +2758,316 @@ function global:Get-MSGraphUser
                                 $userObject | Add-Member -MemberType NoteProperty -Name $( $property.Name ) -Value $( $userInfo.$( $property.Name ) )
                             }
 
-                            # add manager to object
-                            $managerResponse = $data.responses | Where-Object -FilterScript {$_.id -eq 2}
-
-                            if ('200' -eq $managerResponse.status)
+                            if (-not $MinAttributeSet)
                             {
-                                $userObject | Add-Member -MemberType NoteProperty -Name Manager -Value @( $($managerResponse.body | Select-Object * -ExcludeProperty "@odata.Context","@odata.type") )
-                            }
-                            else
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name Manager -Value @( $($managerResponse.body.error) )
-                            }
 
-                            # extract memberOf response
-                            $responseMemberOf = $data.responses | Where-Object -FilterScript {$_.id -eq 3}
-
-                            if ('200' -eq $responseMemberOf.status)
-                            {
-                                if ($responseMemberOf.body.'@odata.nextLink')
+                                # add manager to object
+                                $managerResponse = $data.responses | Where-Object -FilterScript {$_.id -eq 2}
+    
+                                if ('200' -eq $managerResponse.status)
                                 {
-
-                                    Write-Verbose 'Need to fetch more data for memberOf...'
-                                    [System.Int16]$counter = '2'
-                                    # create collection
-                                    $groupCollection = [System.Collections.ArrayList]@()
-
-                                    # add first batch of groups to collection
-                                    $groupCollection += $responseMemberOf.body.value | Select-Object * -ExcludeProperty "@odata.type"
-
-                                    do
-                                    {
-                                        $groupParams = @{
-                                            ContentType = 'application/json'
-                                            Method = 'GET'
-                                            Headers = @{ Authorization = "Bearer $($AccessToken)"}
-                                            Uri = $responseMemberOf.body.'@odata.nextLink'
-                                            TimeoutSec = $TimeoutSec
-                                        }
-
-                                        $responseMemberOf = Invoke-RestMethod @groupParams
-
-                                        if ($responseMemberOf.body.value)
-                                        {
-                                            $groupCollection += $responseMemberOf.body.value | Select-Object * -ExcludeProperty "@odata.type"
-                                        }
-                                        else
-                                        {
-                                            $groupCollection += $responseMemberOf.value | Select-Object * -ExcludeProperty "@odata.type"
-                                        }
-
-                                        Write-Verbose "Pagecount:$($counter)..."
-                                        $counter++
-
-                                    } while ($responseMemberOf.body.'@odata.nextLink')
-
-                                    $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @( $groupCollection )
-
+                                    $userObject | Add-Member -MemberType NoteProperty -Name Manager -Value @( $($managerResponse.body | Select-Object * -ExcludeProperty "@odata.Context","@odata.type") )
                                 }
                                 else
                                 {
-                                    $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @( $($responseMemberOf.body.value | Select-Object * -ExcludeProperty "@odata.type") )
+                                    $userObject | Add-Member -MemberType NoteProperty -Name Manager -Value @( $($managerResponse.body.error) )
                                 }
-
-                            }
-                            else
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @( $($responseMemberOf.body.error) )
-                            }
-
-                            if ($userInfo.id)
-                            {
-                                try {
-                                    # retrieve joined teams
-                                    $teamsParams = @{
-                                                ContentType = 'application/json'
-                                                Method = 'GET'
-                                                Headers = @{ Authorization = "Bearer $($AccessToken)"}
-                                                Uri = "https://graph.microsoft.com/beta/users/$($userInfo.id)/joinedTeams"
-                                                TimeoutSec = $TimeoutSec
-                                                ErrorAction = 'SilentlyContinue'
-                                    }
-
-                                    $responseJoinedTeams = Invoke-RestMethod @teamsParams
-
-                                    if ($responseJoinedTeams.'@odata.nextLink')
+    
+                                # extract memberOf response
+                                $responseMemberOf = $data.responses | Where-Object -FilterScript {$_.id -eq 3}
+    
+                                if ('200' -eq $responseMemberOf.status)
+                                {
+                                    if ($responseMemberOf.body.'@odata.nextLink')
                                     {
-
-                                        Write-Verbose 'Need to fetch more data for joinedTeams...'
+    
+                                        Write-Verbose 'Need to fetch more data for memberOf...'
+                                        [System.Int16]$counter = '2'
                                         # create collection
-                                        $teamsCollection = [System.Collections.ArrayList]@()
-
+                                        $groupCollection = [System.Collections.ArrayList]@()
+    
                                         # add first batch of groups to collection
-                                        $teamsCollection += $responseJoinedTeams.Value
-
+                                        $groupCollection += $responseMemberOf.body.value | Select-Object * -ExcludeProperty "@odata.type"
+    
                                         do
                                         {
                                             $groupParams = @{
                                                 ContentType = 'application/json'
                                                 Method = 'GET'
                                                 Headers = @{ Authorization = "Bearer $($AccessToken)"}
-                                                Uri = $($responseJoinedTeams.'@odata.nextLink')
+                                                Uri = $responseMemberOf.body.'@odata.nextLink'
                                                 TimeoutSec = $TimeoutSec
                                             }
-
-                                            $responseJoinedTeams = Invoke-RestMethod @groupParams
-
-                                            $teamsCollection += $responseJoinedTeams.Value
-
-                                        } while ($responseJoinedTeams.'@odata.nextLink')
-
-                                        $userObject | Add-Member -MemberType NoteProperty -Name JoinedTeams -Value @( $teamsCollection )
-
+    
+                                            $responseMemberOf = Invoke-RestMethod @groupParams
+    
+                                            if ($responseMemberOf.body.value)
+                                            {
+                                                $groupCollection += $responseMemberOf.body.value | Select-Object * -ExcludeProperty "@odata.type"
+                                            }
+                                            else
+                                            {
+                                                $groupCollection += $responseMemberOf.value | Select-Object * -ExcludeProperty "@odata.type"
+                                            }
+    
+                                            Write-Verbose "Pagecount:$($counter)..."
+                                            $counter++
+    
+                                        } while ($responseMemberOf.body.'@odata.nextLink')
+    
+                                        $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @( $groupCollection )
+    
                                     }
                                     else
                                     {
-                                        $userObject | Add-Member -MemberType NoteProperty -Name JoinedTeams -Value @($responseJoinedTeams.Value)
+                                        $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @( $($responseMemberOf.body.value | Select-Object * -ExcludeProperty "@odata.type") )
                                     }
-                                }
-                                catch {
-                                    $userObject | Add-Member -MemberType NoteProperty -Name JoinedTeams -Value $("Error for resource:$($_.Exception.Response.ResponseUri.ToString()) with StatusCode:$($_.Exception.Response.StatusCode.ToString())")
-                                }
-
-                                if ($GetDeltaToken)
-                                {
-                                    try {
-                                        Write-Verbose "Get delta for $($userInfo.userPrincipalName)"
-                                        $deltaParams = @{
-                                                ContentType = 'application/json'
-                                                Method = 'GET'
-                                                Headers = @{ Authorization = "Bearer $($AccessToken)"; prefer = "return=minimal"}
-                                                Uri = 'https://graph.microsoft.com/beta/users/delta?' + '$filter=id eq ' + "'$($userInfo.id)'" + '&$deltaToken=latest'
-                                                TimeoutSec = $TimeoutSec
-                                        }
-
-                                        $responseDelta = Invoke-RestMethod @deltaParams
-
-                                        if ( -not [System.String]::IsNullOrEmpty($responseDelta.'@odata.deltaLink') )
-                                        {
-                                            # create custom object
-                                            $deltaObject = New-Object -TypeName psobject
-                                            # add properties to custom object
-                                            $deltaObject | Add-Member -MemberType NoteProperty -Name createdDateTimeUTC -Value $(Get-Date (Get-Date).ToUniversalTime() -Format u)
-                                            $deltaObject | Add-Member -MemberType NoteProperty -Name deltaLink -Value $($responseDelta.'@odata.deltaLink')
-                                            # add custom object to user object
-                                            $userObject | Add-Member -MemberType NoteProperty -Name DeltaLink -Value @( $deltaObject )
-                                        }
-                                    }
-                                    catch {
-                                        $userObject | Add-Member -MemberType NoteProperty -Name DeltaLink -Value $("Error for resource:$($_.Exception.Response.ResponseUri.ToString()) with StatusCode:$($_.Exception.Response.StatusCode.ToString())")
-                                    }
-                                }
-                            }
-
-                            if ($GetMailboxSettings)
-                            {
-                                $responseMailboxsettings = $data.responses | Where-Object -FilterScript {$_.id -eq 5}
-
-                                if ('200' -eq $responseMailboxsettings.status)
-                                {
-                                    $userObject | Add-Member -MemberType NoteProperty -Name MailboxSettings -Value  @( $($responseMailboxsettings.body.mailboxSettings) )
+    
                                 }
                                 else
                                 {
-                                    $userObject | Add-Member -MemberType NoteProperty -Name MailboxSettings -Value  @( $($responseMailboxsettings.body.error) )
+                                    $userObject | Add-Member -MemberType NoteProperty -Name MemberOf -Value @( $($responseMemberOf.body.error) )
                                 }
-                            }
-
-                            if ($GetAuthMethods)
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name AuthenticationMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 6) -and ($_.status -eq 200)}).body.value ))
-                                $userObject | Add-Member -MemberType NoteProperty -Name PasswordMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 7) -and ($_.status -eq 200)}).body.value ))
-                                $userObject | Add-Member -MemberType NoteProperty -Name PhoneMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 8) -and ($_.status -eq 200)}).body.value ))
-                                $userObject | Add-Member -MemberType NoteProperty -Name Fido2Methods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 15) -and ($_.status -eq 200)}).body.value ))
-                                $userObject | Add-Member -MemberType NoteProperty -Name PasswordlessMicrosoftAuthenticatorMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 16) -and ($_.status -eq 200)}).body.value ))
-                            }
-
-                            $licenseResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 4}
-
-                            if ('200' -eq $licenseResponse.status)
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name LicenseDetails -Value  @( $($licenseResponse.body.value) )
-                            }
-                            else
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name LicenseDetails -Value  @( $($licenseResponse.body.error) )
-                            }
-
-                            $registeredDevicesResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 9}
-
-                            if ('200' -eq $registeredDevicesResponse.status)
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name RegisteredDevices -Value  @( $($registeredDevicesResponse.body.value | Select-Object * -ExcludeProperty "@odata.type") )
-                            }
-                            else
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name RegisteredDevices -Value  @( $($registeredDevicesResponse.body.error) )
-                            }
-
-                            $ownedDevicesResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 10}
-
-                            if ('200' -eq $ownedDevicesResponse.status)
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name OwnedDevices -Value  @( $($ownedDevicesResponse.body.value | Select-Object * -ExcludeProperty "@odata.type") )
-                            }
-                            else
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name OwnedDevices -Value  @( $($ownedDevicesResponse.body.error) )
-                            }
-
-                            $ownedObjectsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 11}
-
-                            if ('200' -eq $ownedObjectsResponse.status)
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name OwnedObjects -Value  @( $($ownedObjectsResponse.body.value) )
-                            }
-                            else
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name OwnedObjects -Value  @( $($ownedObjectsResponse.body.error) )
-                            }
-
-                            $createdObjectsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 12}
-
-                            if ('200' -eq $createdObjectsResponse.status)
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name CreatedObjects -Value  @( $($createdObjectsResponse.body.value) )
-                            }
-                            else
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name CreatedObjects -Value  @( $($createdObjectsResponse.body.error) )
-                            }
-
-                            if ($createdObjectsResponse.body.value.'@odata.type' -contains '#microsoft.graph.servicePrincipal')
-                            {
-                                Write-Verbose "ServicePrincipals found as ownedObjects. Gathering details..."
-                                # get id for servicePrincipal
-                                $servicePrincipalIDs = ($createdObjectsResponse.body.value | Where-Object '@odata.type' -eq '#microsoft.graph.servicePrincipal').id
-
-                                # create collection
-                                [System.Collections.ArrayList]$servicePrincipalCollection = @()
-
-                                foreach ($id in $servicePrincipalIDs)
+    
+                                if ($userInfo.id)
                                 {
-                                    Write-Verbose "Requesting details for SPN $($id)..."
-                                    $spnParams = @{
-                                            ContentType = 'application/json'
-                                            Method = 'GET'
-                                            Headers = @{ Authorization = "Bearer $($AccessToken)"}
-                                            Uri = "https://graph.microsoft.com/beta/servicePrincipals/$($id)"
-                                            TimeoutSec = $TimeoutSec
+                                    try {
+                                        # retrieve joined teams
+                                        $teamsParams = @{
+                                                    ContentType = 'application/json'
+                                                    Method = 'GET'
+                                                    Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                                                    Uri = "https://graph.microsoft.com/beta/users/$($userInfo.id)/joinedTeams"
+                                                    TimeoutSec = $TimeoutSec
+                                                    ErrorAction = 'SilentlyContinue'
+                                        }
+    
+                                        $responseJoinedTeams = Invoke-RestMethod @teamsParams
+    
+                                        if ($responseJoinedTeams.'@odata.nextLink')
+                                        {
+    
+                                            Write-Verbose 'Need to fetch more data for joinedTeams...'
+                                            # create collection
+                                            $teamsCollection = [System.Collections.ArrayList]@()
+    
+                                            # add first batch of groups to collection
+                                            $teamsCollection += $responseJoinedTeams.Value
+    
+                                            do
+                                            {
+                                                $groupParams = @{
+                                                    ContentType = 'application/json'
+                                                    Method = 'GET'
+                                                    Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                                                    Uri = $($responseJoinedTeams.'@odata.nextLink')
+                                                    TimeoutSec = $TimeoutSec
+                                                }
+    
+                                                $responseJoinedTeams = Invoke-RestMethod @groupParams
+    
+                                                $teamsCollection += $responseJoinedTeams.Value
+    
+                                            } while ($responseJoinedTeams.'@odata.nextLink')
+    
+                                            $userObject | Add-Member -MemberType NoteProperty -Name JoinedTeams -Value @( $teamsCollection )
+    
+                                        }
+                                        else
+                                        {
+                                            $userObject | Add-Member -MemberType NoteProperty -Name JoinedTeams -Value @($responseJoinedTeams.Value)
+                                        }
                                     }
-
-                                    $responseSPN = Invoke-RestMethod @spnParams
-
-                                    $servicePrincipalCollection += $responseSPN
+                                    catch {
+                                        $userObject | Add-Member -MemberType NoteProperty -Name JoinedTeams -Value $("Error for resource:$($_.Exception.Response.ResponseUri.ToString()) with StatusCode:$($_.Exception.Response.StatusCode.ToString())")
+                                    }
+    
+                                    if ($GetDeltaToken)
+                                    {
+                                        try {
+                                            Write-Verbose "Get delta for $($userInfo.userPrincipalName)"
+                                            $deltaParams = @{
+                                                    ContentType = 'application/json'
+                                                    Method = 'GET'
+                                                    Headers = @{ Authorization = "Bearer $($AccessToken)"; prefer = "return=minimal"}
+                                                    Uri = 'https://graph.microsoft.com/beta/users/delta?' + '$filter=id eq ' + "'$($userInfo.id)'" + '&$deltaToken=latest'
+                                                    TimeoutSec = $TimeoutSec
+                                            }
+    
+                                            $responseDelta = Invoke-RestMethod @deltaParams
+    
+                                            if ( -not [System.String]::IsNullOrEmpty($responseDelta.'@odata.deltaLink') )
+                                            {
+                                                # create custom object
+                                                $deltaObject = New-Object -TypeName psobject
+                                                # add properties to custom object
+                                                $deltaObject | Add-Member -MemberType NoteProperty -Name createdDateTimeUTC -Value $(Get-Date (Get-Date).ToUniversalTime() -Format u)
+                                                $deltaObject | Add-Member -MemberType NoteProperty -Name deltaLink -Value $($responseDelta.'@odata.deltaLink')
+                                                # add custom object to user object
+                                                $userObject | Add-Member -MemberType NoteProperty -Name DeltaLink -Value @( $deltaObject )
+                                            }
+                                        }
+                                        catch {
+                                            $userObject | Add-Member -MemberType NoteProperty -Name DeltaLink -Value $("Error for resource:$($_.Exception.Response.ResponseUri.ToString()) with StatusCode:$($_.Exception.Response.StatusCode.ToString())")
+                                        }
+                                    }
                                 }
-
-                                $userObject | Add-Member -MemberType NoteProperty -Name ServicePrincipalDetails -Value @( $servicePrincipalCollection )
-                            }
-
-                            if ($ownedObjectsResponse.body.value.'@odata.type' -contains '#microsoft.graph.application')
-                            {
-                                Write-Verbose "ServicePrincipals found as ownedObjects. Gathering details..."
-                                # get id for application
-                                $appIDs = ($ownedObjectsResponse.body.value | Where-Object '@odata.type' -eq '#microsoft.graph.application').id
-
-                                # create collection
-                                [System.Collections.ArrayList]$applicationCollection = @()
-
-                                foreach ($id in $appIDs)
+    
+                                if ($GetMailboxSettings)
                                 {
-                                    Write-Verbose "Requesting details for Application $($id)..."
-                                    $appParams = @{
-                                            ContentType = 'application/json'
-                                            Method = 'GET'
-                                            Headers = @{ Authorization = "Bearer $($AccessToken)"}
-                                            Uri = "https://graph.microsoft.com/beta/applications/$($id)"
-                                            TimeoutSec = $TimeoutSec
+                                    $responseMailboxsettings = $data.responses | Where-Object -FilterScript {$_.id -eq 5}
+    
+                                    if ('200' -eq $responseMailboxsettings.status)
+                                    {
+                                        $userObject | Add-Member -MemberType NoteProperty -Name MailboxSettings -Value  @( $($responseMailboxsettings.body.mailboxSettings) )
                                     }
-
-                                    $responseApp = Invoke-RestMethod @appParams
-
-                                    $applicationCollection += $responseApp | Select-Object * -ExcludeProperty "@odata.context"
+                                    else
+                                    {
+                                        $userObject | Add-Member -MemberType NoteProperty -Name MailboxSettings -Value  @( $($responseMailboxsettings.body.error) )
+                                    }
+                                }
+    
+                                if ($GetAuthMethods)
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name AuthenticationMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 6) -and ($_.status -eq 200)}).body.value ))
+                                    $userObject | Add-Member -MemberType NoteProperty -Name PasswordMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 7) -and ($_.status -eq 200)}).body.value ))
+                                    $userObject | Add-Member -MemberType NoteProperty -Name PhoneMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 8) -and ($_.status -eq 200)}).body.value ))
+                                    $userObject | Add-Member -MemberType NoteProperty -Name Fido2Methods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 15) -and ($_.status -eq 200)}).body.value ))
+                                    $userObject | Add-Member -MemberType NoteProperty -Name PasswordlessMicrosoftAuthenticatorMethods -Value @($( ($data.responses | Where-Object -FilterScript { ($_.id -eq 16) -and ($_.status -eq 200)}).body.value ))
+                                }
+    
+                                $licenseResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 4}
+    
+                                if ('200' -eq $licenseResponse.status)
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name LicenseDetails -Value  @( $($licenseResponse.body.value) )
+                                }
+                                else
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name LicenseDetails -Value  @( $($licenseResponse.body.error) )
+                                }
+    
+                                $registeredDevicesResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 9}
+    
+                                if ('200' -eq $registeredDevicesResponse.status)
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name RegisteredDevices -Value  @( $($registeredDevicesResponse.body.value | Select-Object * -ExcludeProperty "@odata.type") )
+                                }
+                                else
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name RegisteredDevices -Value  @( $($registeredDevicesResponse.body.error) )
+                                }
+    
+                                $ownedDevicesResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 10}
+    
+                                if ('200' -eq $ownedDevicesResponse.status)
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name OwnedDevices -Value  @( $($ownedDevicesResponse.body.value | Select-Object * -ExcludeProperty "@odata.type") )
+                                }
+                                else
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name OwnedDevices -Value  @( $($ownedDevicesResponse.body.error) )
+                                }
+    
+                                $ownedObjectsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 11}
+    
+                                if ('200' -eq $ownedObjectsResponse.status)
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name OwnedObjects -Value  @( $($ownedObjectsResponse.body.value) )
+                                }
+                                else
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name OwnedObjects -Value  @( $($ownedObjectsResponse.body.error) )
+                                }
+    
+                                $createdObjectsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 12}
+    
+                                if ('200' -eq $createdObjectsResponse.status)
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name CreatedObjects -Value  @( $($createdObjectsResponse.body.value) )
+                                }
+                                else
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name CreatedObjects -Value  @( $($createdObjectsResponse.body.error) )
+                                }
+    
+                                if ($createdObjectsResponse.body.value.'@odata.type' -contains '#microsoft.graph.servicePrincipal')
+                                {
+                                    Write-Verbose "ServicePrincipals found as ownedObjects. Gathering details..."
+                                    # get id for servicePrincipal
+                                    $servicePrincipalIDs = ($createdObjectsResponse.body.value | Where-Object '@odata.type' -eq '#microsoft.graph.servicePrincipal').id
+    
+                                    # create collection
+                                    [System.Collections.ArrayList]$servicePrincipalCollection = @()
+    
+                                    foreach ($id in $servicePrincipalIDs)
+                                    {
+                                        Write-Verbose "Requesting details for SPN $($id)..."
+                                        $spnParams = @{
+                                                ContentType = 'application/json'
+                                                Method = 'GET'
+                                                Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                                                Uri = "https://graph.microsoft.com/beta/servicePrincipals/$($id)"
+                                                TimeoutSec = $TimeoutSec
+                                        }
+    
+                                        $responseSPN = Invoke-RestMethod @spnParams
+    
+                                        $servicePrincipalCollection += $responseSPN
+                                    }
+    
+                                    $userObject | Add-Member -MemberType NoteProperty -Name ServicePrincipalDetails -Value @( $servicePrincipalCollection )
+                                }
+    
+                                if ($ownedObjectsResponse.body.value.'@odata.type' -contains '#microsoft.graph.application')
+                                {
+                                    Write-Verbose "ServicePrincipals found as ownedObjects. Gathering details..."
+                                    # get id for application
+                                    $appIDs = ($ownedObjectsResponse.body.value | Where-Object '@odata.type' -eq '#microsoft.graph.application').id
+    
+                                    # create collection
+                                    [System.Collections.ArrayList]$applicationCollection = @()
+    
+                                    foreach ($id in $appIDs)
+                                    {
+                                        Write-Verbose "Requesting details for Application $($id)..."
+                                        $appParams = @{
+                                                ContentType = 'application/json'
+                                                Method = 'GET'
+                                                Headers = @{ Authorization = "Bearer $($AccessToken)"}
+                                                Uri = "https://graph.microsoft.com/beta/applications/$($id)"
+                                                TimeoutSec = $TimeoutSec
+                                        }
+    
+                                        $responseApp = Invoke-RestMethod @appParams
+    
+                                        $applicationCollection += $responseApp | Select-Object * -ExcludeProperty "@odata.context"
+                                    }
+    
+                                    $userObject | Add-Member -MemberType NoteProperty -Name ApplicationDetails -Value @( $applicationCollection )
+                                
+                                }
+    
+                                $driveResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 13}
+                                if ('200' -eq $driveResponse.status)
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name OneDrive -Value  @( $($driveResponse.body | Select-Object * -ExcludeProperty "@odata.context") )
+                                }
+                                else
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name OneDrive -Value  @( $($driveResponse.body.error) )
+                                }
+    
+                                $oauth2PermissionGrantsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 14}
+                                if ('200' -eq $oauth2PermissionGrantsResponse.status)
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name OAuth2PermissionGrants -Value  @( $($oauth2PermissionGrantsResponse.body.value | Select-Object * -ExcludeProperty "@odata.context") )
+                                }
+                                else
+                                {
+                                    $userObject | Add-Member -MemberType NoteProperty -Name OAuth2PermissionGrants -Value  @( $($oauth2PermissionGrantsResponse.body.error) )
                                 }
 
-                                $userObject | Add-Member -MemberType NoteProperty -Name ApplicationDetails -Value @( $applicationCollection )
-                            
-                            }
-
-                            $driveResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 13}
-                            if ('200' -eq $driveResponse.status)
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name OneDrive -Value  @( $($driveResponse.body | Select-Object * -ExcludeProperty "@odata.context") )
-                            }
-                            else
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name OneDrive -Value  @( $($driveResponse.body.error) )
-                            }
-
-                            $oauth2PermissionGrantsResponse = $data.responses | Where-Object -FilterScript { $_.id -eq 14}
-                            if ('200' -eq $oauth2PermissionGrantsResponse.status)
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name OAuth2PermissionGrants -Value  @( $($oauth2PermissionGrantsResponse.body.value | Select-Object * -ExcludeProperty "@odata.context") )
-                            }
-                            else
-                            {
-                                $userObject | Add-Member -MemberType NoteProperty -Name OAuth2PermissionGrants -Value  @( $($oauth2PermissionGrantsResponse.body.error) )
                             }
 
                         }
@@ -5749,5 +5774,28 @@ function global:ConvertFrom-EncodedCommand
     catch {
         $_
     }
+}
+
+function global:Format-CalDiag
+{
+    Param (
+        [Parameter( Mandatory=$true, Position=0)]
+        [System.Object[]]
+        $CalendarDiagnosticObjects
+    )
+
+    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,ClientIntent,CreationTime,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,ResponsibleUserName,SenderEmailAddress,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight
+
+}
+
+function global:Get-MSOLUserError
+{
+    Param (
+        [Parameter( Mandatory=$true, Position=0)]
+        [System.String]
+        $UserSearchString
+    )
+
+    (Get-MsolUser -SearchString $UserSearchString ).errors.errordetail.ObjectErrors.ErrorRecord.ErrorDescription
 }
 
