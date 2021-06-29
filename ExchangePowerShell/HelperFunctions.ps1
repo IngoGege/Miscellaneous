@@ -5799,3 +5799,206 @@ function global:Get-MSOLUserError
     (Get-MsolUser -SearchString $UserSearchString ).errors.errordetail.ObjectErrors.ErrorRecord.ErrorDescription
 }
 
+function global:Get-LAPFIfromStoreID
+{
+    <#
+
+        .SYNOPSIS
+
+        Created by: https://ingogegenwarth.wordpress.com/
+        Version:    42 ("What do you get if you multiply six by nine?")
+        Changed:    29.09.2021
+
+        .LINK
+        http://gsexdev.blogspot.com/
+
+        .DESCRIPTION
+
+        The purpose of the script is to convert a folder id in StoreID format to LastParentFolderID in HexEntryID format
+
+        .PARAMETER SourceID
+
+        The FolderID in StoreID format to be converted.
+
+        .PARAMETER DestinationID
+
+        Destination format for conversion.
+
+        .PARAMETER WebServicesDLL
+
+        Path to EWS managed API DLL.
+
+        .PARAMETER AccessToken
+
+        AccessToken to be used for access Exchange Online.
+
+        .EXAMPLE
+
+        # convert a folder ID and return the LAPFID
+        Get-LAPFIfromStoreID -EmailAddress LynneR@M365x272199.OnMicrosoft.com -SourceId LgAAAABtXj...p3mzwuKAAUhS+Y5AAAB -AccessToken eyJ0eXAiOiJKV1QiLC...0Pf-4hM1Tu7WLw
+    #>
+    [CmdletBinding()]
+    Param (
+        [Parameter(
+            Mandatory=$true,
+            Position=0)]
+        [System.String]
+        $SourceID,
+
+        [Parameter(
+            Mandatory=$false,
+            Position=1)]
+        [ValidateSet('EwsLegacyId','EwsId','EntryId','HexEntryId','StoreId','OwaId')]
+        [System.String]
+        $DestinationID = 'HexEntryId',
+
+        [Parameter(
+            Mandatory=$false,
+            Position=2)]
+        [ValidateScript({If (Test-Path $_ -PathType leaf){$True} Else {Throw "WebServices DLL could not be found!"}})]
+        [System.String]
+        $WebServicesDLL,
+
+        [Parameter(
+            Mandatory=$false,
+            Position=3)]
+        $AccessToken
+    )
+
+    if ( [System.String]::IsNullOrEmpty($AccessToken) )
+    {
+        # thanks to https://gsexdev.blogspot.com/
+        function Show-OAuthWindow
+        {
+            [CmdletBinding()]
+            param (
+                [System.Uri]
+                $Url
+
+            )
+            ## Start Code Attribution
+            ## Show-AuthWindow function is the work of the following Authors and should remain with the function if copied into other scripts
+            ## https://foxdeploy.com/2015/11/02/using-powershell-and-oauth/
+            ## https://blogs.technet.microsoft.com/ronba/2016/05/09/using-powershell-and-the-office-365-rest-api-with-oauth/
+            ## End Code Attribution
+            Add-Type -AssemblyName System.Web
+            Add-Type -AssemblyName System.Windows.Forms
+
+            $form = New-Object -TypeName System.Windows.Forms.Form -Property @{ Width = 440; Height = 640 }
+            $web = New-Object -TypeName System.Windows.Forms.WebBrowser -Property @{ Width = 420; Height = 600; Url = ($url) }
+            $Navigated = {
+                if ( ($web.DocumentText -match "document.location.replace") -or ($web.Url.AbsoluteUri -match "code=[^&]*") ) {
+                    $Script:oAuthCode = [regex]::match($web.DocumentText, "code=(.*?)\\u0026").Groups[1].Value
+                    if ([System.String]::IsNullOrEmpty($Script:oAuthCode))
+                    {
+                        if ($web.Url.AbsoluteUri -match "error=[^&]*")
+                        {
+                            $Script:oAuthCode = [System.Web.HttpUtility]::UrlDecode($web.Url.AbsoluteUri)
+                        }
+                        else
+                        {
+                            $Script:oAuthCode = [System.Web.HttpUtility]::ParseQueryString($web.Url.AbsoluteUri)[0]
+                        }
+                    }
+                    $form.Close();
+                }
+            }
+            $web.ScriptErrorsSuppressed = $true
+            $web.Add_Navigated($Navigated)
+            $form.Controls.Add($web)
+            $form.Add_Shown( { $form.Activate() })
+            $form.ShowDialog() | Out-Null
+            return $Script:oAuthCode
+        }
+        
+    }
+
+    try {
+
+            Add-Type -AssemblyName System.Web
+            $ClientID = 'd3590ed6-52b3-4102-aeff-aad2292ab01c'
+            $audience = 'https://outlook.office365.com'
+            # parameters for auth code flow
+            $RedirectURI = 'urn:ietf:wg:oauth:2.0:oob'
+            $state = Get-Random
+            $authURI = "https://login.microsoftonline.com/Common"
+            $authURI += "/oauth2/authorize?client_id=$ClientId"
+            $authURI += "&response_type=code&redirect_uri= " + [System.Web.HttpUtility]::UrlEncode($RedirectURI)
+            $authURI += "&response_mode=query&resource=" + [System.Web.HttpUtility]::UrlEncode($audience) + "&state=$state"
+            $authURI += "&prompt=select_account"
+
+            # acquire auth code from AAD
+            $authCode = Show-OAuthWindow -Url $authURI
+
+            $body = @{
+                "grant_type" = "authorization_code";
+                "client_id" = "$ClientId";
+                "code" = $authCode;
+                "redirect_uri" = $RedirectURI
+            }
+
+            $paramsTokenRequest = @{
+                Body = $body
+                ContentType = 'application/x-www-form-urlencoded'
+                Method = 'Post'
+                #TimeoutSec = $Timeout
+                Uri = "https://login.microsoftonline.com/common/oauth2/token"
+            }
+
+            # acquire access token
+            $tokenRequest = Invoke-RestMethod @paramsTokenRequest
+            $AccessToken = $tokenRequest.access_token
+    }
+    catch {
+        $_
+        break
+    }
+
+    if ($WebServicesDLL)
+    {
+                try {
+                    $EWSDLL = $WebServicesDLL
+                    Import-Module -Name $EWSDLL
+                }
+                catch {
+                    $Error[0].Exception
+                    exit
+                }
+    }
+    else
+    {
+        ## Load Managed API dll
+        ###CHECK FOR EWS MANAGED API, IF PRESENT IMPORT THE HIGHEST VERSION EWS DLL, ELSE EXIT
+        $EWSDLL = (($(Get-ItemProperty -ErrorAction SilentlyContinue -Path Registry::$(Get-ChildItem -ErrorAction SilentlyContinue -Path 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Exchange\Web Services'|Sort-Object Name -Descending| Select-Object -First 1 -ExpandProperty Name)).'Install Directory') + "Microsoft.Exchange.WebServices.dll")
+        if (Test-Path -Path $EWSDLL)
+        {
+            Import-Module -Name $EWSDLL
+        }
+        else
+        {
+            "$(get-date -format yyyyMMddHHmmss):"
+            "This script requires the EWS Managed API 1.2 or later."
+            "Please download and install the current version of the EWS Managed API from"
+            "http://go.microsoft.com/fwlink/?LinkId=255472"
+            ""
+            "Exiting Script."
+            break
+        }
+    }
+
+    ## Set Exchange Version
+    $ExchangeVersion = [Microsoft.Exchange.WebServices.Data.ExchangeVersion]::Exchange2013_SP1
+    ## Create Exchange Service Object
+    $Service = New-Object -TypeName Microsoft.Exchange.WebServices.Data.ExchangeService -ArgumentList ($ExchangeVersion)
+    #$service.PreAuthenticate = $true
+    #set DateTimePrecision to get milliseconds
+    $Service.DateTimePrecision=[Microsoft.Exchange.WebServices.Data.DateTimePrecision]::Milliseconds
+    #$service.TraceEnabled = $true
+    $service.Credentials = [Microsoft.Exchange.WebServices.Data.OAuthCredentials]$AccessToken
+    $service.Url = 'https://outlook.office365.com/EWS/exchange.asmx'
+
+    $AltIdBase = New-Object -TypeName Microsoft.Exchange.WebServices.Data.AlternateId -ArgumentList ('StoreID',$SourceID,'foobar@bla.com')
+    $Converted = $Service.ConvertId($AltIdBase,$DestinationID)
+    $Converted.UniqueId.Substring(44,44)
+}
+
