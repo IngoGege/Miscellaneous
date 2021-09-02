@@ -5784,7 +5784,7 @@ function global:Format-CalDiag
         $CalendarDiagnosticObjects
     )
 
-    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,ClientIntent,CreationTime,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,ResponsibleUserName,SenderEmailAddress,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight
+    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,SenderEmailAddress,ResponsibleUserName,ClientIntent,CreationTime,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight
 
 }
 
@@ -6000,5 +6000,110 @@ function global:Get-LAPFIfromStoreID
     $AltIdBase = New-Object -TypeName Microsoft.Exchange.WebServices.Data.AlternateId -ArgumentList ('StoreID',$SourceID,'foobar@bla.com')
     $Converted = $Service.ConvertId($AltIdBase,$DestinationID)
     $Converted.UniqueId.Substring(44,44)
+}
+
+function global:New-AppAccessPolicy
+{
+<#
+
+        .SYNOPSIS
+
+        Created by: https://ingogegenwarth.wordpress.com/
+        Version:    42 ("What do you get if you multiply six by nine?")
+        Changed:    13.08.2021
+
+        .LINK
+        https://docs.microsoft.com/en-us/graph/auth-limit-mailbox-access
+
+        .DESCRIPTION
+
+        The purpose of the function is to create an application access policy with short description
+
+        .PARAMETER Recipient
+
+        The Recipient parameter specifies the recipient to define in the policy.
+
+        .PARAMETER ApplicationID
+
+        The Identity parameter specifies the GUID of the apps to include in the policy.
+    #>
+    [CmdletBinding()]
+    Param (
+        [Parameter(
+            Mandatory=$true,
+            Position=0)]
+        [System.String]
+        $Recipient,
+
+        [Parameter(
+            Mandatory=$true,
+            Position=1)]
+        [System.String]
+        $ApplicationID
+    )
+    
+    try {
+        New-ApplicationAccessPolicy -Description "Restrict access to $($Recipient)" -AppId $ApplicationID -PolicyScopeGroupId $Recipient -AccessRight RestrictAccess
+    }
+    catch{
+        $_
+    }
+}
+
+function global:Format-FolderStats
+{
+    Param (
+        [Parameter( Mandatory=$true, Position=0)]
+        [System.Object[]]
+        $FolderStatistics
+    )
+
+    [System.Collections.ArrayList]$script:selectProperties = @(
+    "Date",
+    "CreationTime",
+    "LastModifiedTime",
+    "Name",
+    "FolderPath",
+    "FolderType",
+    "TargetQuota",
+    "StorageQuota",
+    "StorageWarningQuota",
+    "VisibleItemsInFolder",
+    "HiddenItemsInFolder",
+    "ItemsInFolder",
+    "DeletedItemsInFolder",
+    "FolderSize",
+    "DeletePolicy",
+    "ArchivePolicy",
+    "CompliancePolicy",
+    "RetentionFlags",
+    "ItemsInFolderAndSubfolders",
+    "FolderAndSubfolderSize",
+    "TopSubject",
+    "TopSubjectSize",
+    "TopSubjectCount",
+    "TopSubjectClass",
+    "TopSubjectPath",
+    "TopSubjectReceivedTime",
+    "TopSubjectFrom",
+    "TopClientInfoForSubject",
+    "TopClientInfoCountForSubject",
+    "OldestItemReceivedDate",
+    "NewestItemReceivedDate",
+    "OldestDeletedItemReceivedDate",
+    "NewestDeletedItemReceivedDate",
+    "OldestItemLastModifiedDate",
+    "NewestItemLastModifiedDate",
+    "OldestDeletedItemLastModifiedDate",
+    "NewestDeletedItemLastModifiedDate",
+    "Identity",
+    "SearchFolder",
+    "Diagnostics",
+    "DiagnosticInfo"
+    )
+
+    $cmd = '$FolderStatistics |' + "select $($selectProperties -join ',')"
+    Invoke-Expression $cmd
+
 }
 
