@@ -2673,7 +2673,7 @@ function global:Get-MSGraphUser
                             if ($GetMailboxSettings)
                             {
                                 $mailboxsettings = @{
-                                        url = "/users/$($account)" + '?$select=mailboxSettings'
+                                        url = "/users/$($account)" + '/mailboxSettings'
                                         method = 'GET'
                                         id = '5'
                                     }
@@ -2919,7 +2919,7 @@ function global:Get-MSGraphUser
     
                                     if ('200' -eq $responseMailboxsettings.status)
                                     {
-                                        $userObject | Add-Member -MemberType NoteProperty -Name MailboxSettings -Value  @( $($responseMailboxsettings.body.mailboxSettings) )
+                                        $userObject | Add-Member -MemberType NoteProperty -Name MailboxSettings -Value  @( $($responseMailboxsettings.body | Select-Object * -ExcludeProperty '@odata.context') )
                                     }
                                     else
                                     {
