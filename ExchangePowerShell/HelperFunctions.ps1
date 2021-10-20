@@ -5784,7 +5784,7 @@ function global:Format-CalDiag
         $CalendarDiagnosticObjects
     )
 
-    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,SenderEmailAddress,ResponsibleUserName,ClientIntent,CreationTime,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight
+    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,SenderEmailAddress,ResponsibleUserName,ClientIntent,CreationTime,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight,AppointmentState
 
 }
 
@@ -6105,5 +6105,89 @@ function global:Format-FolderStats
     $cmd = '$FolderStatistics |' + "select $($selectProperties -join ',')"
     Invoke-Expression $cmd
 
+}
+
+function global:ConvertFrom-ImmutableId
+{
+    <#
+
+        .SYNOPSIS
+
+        Created by: https://ingogegenwarth.wordpress.com/
+        Version:    42 ("What do you get if you multiply six by nine?")
+        Changed:    01.10.2021
+
+        .LINK
+        https://ingogegenwarth.wordpress.com/
+
+        .DESCRIPTION
+
+        The purpose of the script is to convert a ImmutableId into a Guid
+
+        .PARAMETER ImmutableId
+
+        The ImmutableId to be converted.
+
+        .EXAMPLE
+
+        ConvertFrom-ImmutableId -ImmutableId "B/YXGYLqqU2xrbJKWyNDrB=="
+
+    #>
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $ImmutableId
+    )
+
+    try
+    {
+        ([System.Guid]([Convert]::FromBase64String($ImmutableId))).Guid
+    }
+    catch
+    {
+        $_
+    }
+}
+
+function global:ConvertTo-ImmutableId
+{
+    <#
+
+        .SYNOPSIS
+
+        Created by: https://ingogegenwarth.wordpress.com/
+        Version:    42 ("What do you get if you multiply six by nine?")
+        Changed:    01.10.2021
+
+        .LINK
+        https://ingogegenwarth.wordpress.com/
+
+        .DESCRIPTION
+
+        The purpose of the script is to convert a Guid into a ImmutableId
+
+        .PARAMETER Guid
+
+        The Guid to be converted.
+
+        .EXAMPLE
+
+        ConvertTo-ImmutableId -Guid 127836d0-df84-4190-a6df-541df44ca0d9
+
+    #>
+    [CmdletBinding()]
+    param(
+        [System.Guid]
+        $Guid
+    )
+
+    try
+    {
+        [System.Convert]::ToBase64String([System.Guid]::New($Guid).ToByteArray())
+    }
+    catch
+    {
+        $_
+    }
 }
 

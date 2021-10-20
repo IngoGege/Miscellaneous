@@ -114,24 +114,7 @@ function global:Test-SendMail
             }
             catch
             {
-                #create object
-                $returnValue = New-Object -TypeName PSObject
-                #get all properties from last error
-                $ErrorProperties =$Error[0] | Get-Member -MemberType Property
-                #add existing properties to object
-                foreach ($Property in $ErrorProperties)
-                {
-                    if ($Property.Name -eq 'InvocationInfo')
-                    {
-                        $returnValue | Add-Member -Type NoteProperty -Name 'InvocationInfo' -Value $($Error[0].InvocationInfo.PositionMessage)
-                    }
-                    else
-                    {
-                        $returnValue | Add-Member -Type NoteProperty -Name $($Property.Name) -Value $($Error[0].$($Property.Name))
-                    }
-                }
-                #return object
-                $returnValue
+                $_
                 break
             }
         }
@@ -616,6 +599,7 @@ function global:Get-CalendarEvents
                         Method = 'GET'
                         Uri = $baseURI + $mailbox + '/events?$top=20&$select=subject,start,end,organizer'
                         Headers = @{'Authorization'="$($AccessToken)";'X-AnchorMailbox'=$($mailbox)}
+                        ErrorAction = 'Stop'
                     }
 
                     $result = Invoke-RestMethod @param
@@ -627,24 +611,7 @@ function global:Get-CalendarEvents
             }
             catch
             {
-                #create object
-                $returnValue = New-Object -TypeName PSObject
-                #get all properties from last error
-                $ErrorProperties = $Error[0] | Get-Member -MemberType Property
-                #add existing properties to object
-                foreach ($Property in $ErrorProperties)
-                {
-                    if ($Property.Name -eq 'InvocationInfo')
-                    {
-                        $returnValue | Add-Member -Type NoteProperty -Name 'InvocationInfo' -Value $($Error[0].InvocationInfo.PositionMessage)
-                    }
-                    else
-                    {
-                        $returnValue | Add-Member -Type NoteProperty -Name $($Property.Name) -Value $($Error[0].$($Property.Name))
-                    }
-                }
-                #return object
-                $returnValue
+                $_
             }
 
         }
@@ -823,24 +790,7 @@ function global:Create-CalendarEvent
             }
             catch
             {
-                #create object
-                $returnValue = New-Object -TypeName PSObject
-                #get all properties from last error
-                $ErrorProperties = $Error[0] | Get-Member -MemberType Property
-                #add existing properties to object
-                foreach ($Property in $ErrorProperties)
-                {
-                    if ($Property.Name -eq 'InvocationInfo')
-                    {
-                        $returnValue | Add-Member -Type NoteProperty -Name 'InvocationInfo' -Value $($Error[0].InvocationInfo.PositionMessage)
-                    }
-                    else
-                    {
-                        $returnValue | Add-Member -Type NoteProperty -Name $($Property.Name) -Value $($Error[0].$($Property.Name))
-                    }
-                }
-                #return object
-                $returnValue
+                $_
             }
 
         }
@@ -975,24 +925,7 @@ function global:Create-OnlineMeeting
             }
             catch
             {
-                #create object
-                $returnValue = New-Object -TypeName PSObject
-                #get all properties from last error
-                $ErrorProperties = $Error[0] | Get-Member -MemberType Property
-                #add existing properties to object
-                foreach ($Property in $ErrorProperties)
-                {
-                    if ($Property.Name -eq 'InvocationInfo')
-                    {
-                        $returnValue | Add-Member -Type NoteProperty -Name 'InvocationInfo' -Value $($Error[0].InvocationInfo.PositionMessage)
-                    }
-                    else
-                    {
-                        $returnValue | Add-Member -Type NoteProperty -Name $($Property.Name) -Value $($Error[0].$($Property.Name))
-                    }
-                }
-                #return object
-                $returnValue
+                $_
             }
 
         }
