@@ -2037,7 +2037,11 @@ function global:Get-MSGraphUser
 
         [parameter( Position=18)]
         [System.Management.Automation.SwitchParameter]
-        $MinAttributeSet
+        $MinAttributeSet,
+
+        [parameter( Position=19)]
+        [System.Management.Automation.SwitchParameter]
+        $SetAdvancedQueryProps
 
     )
 
@@ -2372,6 +2376,12 @@ function global:Get-MSGraphUser
                         Uri = $URI
                         TimeoutSec = $TimeoutSec
                         ErrorAction = 'Stop'
+                    }
+
+                    if ($SetAdvancedQueryProps)
+                    {
+                        $filterParams.Headers.Add('ConsistencyLevel','eventual')
+                        $filterParams.Uri = $filterParams.Uri + '&$count=true'
                     }
 
                     $userResponse = Invoke-RestMethod @filterParams
