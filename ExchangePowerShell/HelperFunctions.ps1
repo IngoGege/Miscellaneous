@@ -1934,8 +1934,10 @@ function global:Get-MSGraphUser
             How many retries for each user in case of error.
         .PARAMETER TimeoutSec
             TimeoutSec for Cmdlet Invoke-RestMethod.
-         PARAMETER MinAttributeSet
+        .PARAMETER MinAttributeSet
             Request will be done only for default returned attributes
+        .PARAMETER SetAdvancedQueryProps
+            Set ConsistencyLevel header and append &$count=true to filter for advanced query
         .EXAMPLE
             # retrieve data for a specific user by providing a previoues retreieved Bearer access token
             Get-MSGraphUser -User ingo.gegenwarth@contoso.com -GetMailboxSettings -GetDeltaToken -GetAuthMethods -AccessToken eyJ0eXAiOiJKV1QiLC...AwNzY5OTE4LCJuYmYiO -Verbose
