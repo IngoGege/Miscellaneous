@@ -6220,28 +6220,28 @@ function global:Get-SMTPDNSEntries
 
     begin
     {
-    # initiate objects
-    $output = New-Object -TypeName psobject
+        # initiate objects
+        $output = New-Object -TypeName psobject
 
-    $paramsDNS = @{
-        ErrorAction = 'SilentlyContinue'
-    }
-    if($Server) {
-        $paramsDNS.Add('Server',$Server)
-        $nameServer = $Server
-    }
+        $paramsDNS = @{
+            ErrorAction = 'SilentlyContinue'
+        }
+        if($Server) {
+            $paramsDNS.Add('Server',$Server)
+            $nameServer = $Server
+        }
 
-    # retrieve NS
-    $nsDNS = [System.Collections.ArrayList]@()
-    $nsDNS += Resolve-DnsName -Name $Domain -Type NS @paramsDNS
-    if (-not [System.String]::IsNullOrWhiteSpace($nsDNS.NameHost))
-    {
-        $paramsDNS.Server = $nsDNS[0].NameHost
-    }
-    else
-    {
-        Write-Warning 'Could not find NS!'
-    }
+        # retrieve NS
+        $nsDNS = [System.Collections.ArrayList]@()
+        $nsDNS += Resolve-DnsName -Name $Domain -Type NS @paramsDNS
+        if (-not [System.String]::IsNullOrWhiteSpace($nsDNS.NameHost))
+        {
+            $paramsDNS.Server = $nsDNS[0].NameHost
+        }
+        else
+        {
+            Write-Warning 'Could not find NS!'
+        }
 
     }
     process
@@ -6271,7 +6271,7 @@ function global:Get-SMTPDNSEntries
             Write-Verbose "Done with SPF record..."
 
             # get DKIM records
-            $global:dkimResponse = Resolve-DnsName -Name "$selector._domainkey.$Domain" -Type txt @paramsDNS
+            $dkimResponse = Resolve-DnsName -Name "$selector._domainkey.$Domain" -Type txt @paramsDNS
             # check response
 
             if ($dkimResponse.Type -eq 'CNAME')
@@ -6288,7 +6288,7 @@ function global:Get-SMTPDNSEntries
 
                 if (-not $DoNotTrySOA)
                 {
-                    $global:nsDNSDKIM = [System.Collections.ArrayList]@()
+                    $nsDNSDKIM = [System.Collections.ArrayList]@()
                     $nsDNSDKIM = Resolve-DnsName -Name $dkimResponse.NameHost -Type NS @paramsDNS
                     if ( (-not [System.String]::IsNullOrWhiteSpace($nsDNSDKIM.NameHost)) -or (-not [System.String]::IsNullOrWhiteSpace($nsDNSDKIM.PrimaryServer)) )
                     {
@@ -6324,7 +6324,6 @@ function global:Get-SMTPDNSEntries
         {
             $_
         }
-
     }
 
     end
