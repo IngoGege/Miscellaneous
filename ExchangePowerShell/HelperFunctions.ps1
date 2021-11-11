@@ -6231,15 +6231,16 @@ function global:Get-SMTPDNSEntries
         $nameServer = $Server
     }
 
-    # retrieve SOA
-    $soaDNS = Resolve-DnsName -Name $Domain -Type SOA @paramsDNS
-    if (-not [System.String]::IsNullOrWhiteSpace($soaDNS.PrimaryServer))
+    # retrieve NS
+    $nsDNS = [System.Collections.ArrayList]@()
+    $nsDNS += Resolve-DnsName -Name $Domain -Type NS @paramsDNS
+    if (-not [System.String]::IsNullOrWhiteSpace($nsDNS.NameHost))
     {
-        $paramsDNS.Server = $soaDNS.PrimaryServer
+        $paramsDNS.Server = $nsDNS[0].NameHost
     }
     else
     {
-        Write-Warning 'Could not find SOA!'
+        Write-Warning 'Could not find NS!'
     }
 
     }
@@ -6250,10 +6251,12 @@ function global:Get-SMTPDNSEntries
             # get MX records
             $mxRecords = Resolve-DnsName -DnsOnly -Type MX -Name $Domain @paramsDNS
             $mx= $mxRecords | Where-Object 'Type' -eq 'MX' | Select-Object NameExchange,Preference,TTL,@{l='IPAddress';e={(Resolve-DnsName -Type A_AAAA -Name $_.NameExchange | Select-Object -ExpandProperty IPAddress) -join ','}}
+            Write-Verbose "Done with MX records..."
 
             # get DMARC record
             $dmarcRecord = Resolve-DnsName -DnsOnly -Type TXT -Name "_dmarc.$Domain" @paramsDNS
             $dmarc = $dmarcRecord | Where-Object Type -eq 'TXT' | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
+            Write-Verbose "Done with DMARC record..."
 
             # get SPF record
             $spfRecord = Resolve-DnsName -DnsOnly -Type TXT -Name "_spf.$Domain" @paramsDNS
@@ -6265,12 +6268,15 @@ function global:Get-SMTPDNSEntries
             {
                 $spf = Resolve-DnsName -Name $Domain -Type TXT @paramsDNS | Where-Object Strings -match "v=spf" | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
             }
+            Write-Verbose "Done with SPF record..."
 
             # get DKIM records
-            $dkim = Resolve-DnsName -Name "$selector._domainkey.$Domain" -Type txt @paramsDNS
-            if ($dkim.Type -eq 'CNAME')
+            $global:dkimResponse = Resolve-DnsName -Name "$selector._domainkey.$Domain" -Type txt @paramsDNS
+            # check response
+
+            if ($dkimResponse.Type -eq 'CNAME')
             {
-                # retrieve SOA
+                # retrieve NS
                 if ($nameServer)
                 {
                     $paramsDNS.Server = $nameServer
@@ -6280,20 +6286,32 @@ function global:Get-SMTPDNSEntries
                     $paramsDNS.Remove('Server')
                 }
 
-                $soaDNS = Resolve-DnsName -Name $dkim.NameHost -Type SOA @paramsDNS
-                if (-not [System.String]::IsNullOrWhiteSpace($soaDNS.PrimaryServer))
+                if (-not $DoNotTrySOA)
                 {
-                    $paramsDNS.Server = $soaDNS.PrimaryServer
+                    $global:nsDNSDKIM = [System.Collections.ArrayList]@()
+                    $nsDNSDKIM = Resolve-DnsName -Name $dkimResponse.NameHost -Type NS @paramsDNS
+                    if ( (-not [System.String]::IsNullOrWhiteSpace($nsDNSDKIM.NameHost)) -or (-not [System.String]::IsNullOrWhiteSpace($nsDNSDKIM.PrimaryServer)) )
+                    {
+                        if ($nsDNSDKIM[0].PrimaryServer)
+                        {
+                            $paramsDNS.Server = $nsDNSDKIM[0].PrimaryServer
+                        }
+                        else
+                        {
+                            $paramsDNS.Server = $nsDNSDKIM[0].NameHost
+                        }
+                    }
+                    else
+                    {
+                        Write-Warning 'Could not find SOA or NS!'
+                    }
                 }
-                else
-                {
-                    Write-Warning 'Could not find SOA!'
-                }
-                $dkim = Resolve-DnsName -Name $dkim.NameHost -Type TXT @paramsDNS | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
+
+                $dkim = Resolve-DnsName -Name $dkimResponse.NameHost -Type TXT @paramsDNS | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
             }
             else
             {
-                $dkim = $dkim | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
+                $dkim = $dkimResonse | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
             }
 
             $output | Add-Member -MemberType NoteProperty -Name Domain -Value $Domain
