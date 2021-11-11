@@ -6203,3 +6203,192 @@ function global:ConvertTo-ImmutableId
     }
 }
 
+function global:Get-SMTPDNSEntries
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $Domain,
+
+        [System.String]
+        $Server = '8.8.8.8',
+
+        [System.String]
+        $Selector = 'selector1'
+
+    )
+
+    begin
+    {
+    # initiate objects
+    $output = New-Object -TypeName psobject
+
+    $paramsDNS = @{
+        ErrorAction = 'SilentlyContinue'
+    }
+    if($Server) {
+        $paramsDNS.Add('Server',$Server)
+        $nameServer = $Server
+    }
+
+    # retrieve SOA
+    $soaDNS = Resolve-DnsName -Name $Domain -Type SOA @paramsDNS
+    if (-not [System.String]::IsNullOrWhiteSpace($soaDNS.PrimaryServer))
+    {
+        $paramsDNS.Server = $soaDNS.PrimaryServer
+    }
+    else
+    {
+        Write-Warning 'Could not find SOA!'
+    }
+
+    }
+    process
+    {
+        # get MX records
+        $mxRecords = Resolve-DnsName -DnsOnly -Type MX -Name $Domain @paramsDNS
+        $mx= $mxRecords | Where-Object 'Type' -eq 'MX' | Select-Object NameExchange,Preference,TTL,@{l='IPAddress';e={(Resolve-DnsName -Type A_AAAA -Name $_.NameExchange | Select-Object -ExpandProperty IPAddress) -join ','}}
+
+        # get DMARC record
+        $dmarcRecord = Resolve-DnsName -DnsOnly -Type TXT -Name "_dmarc.$Domain" @paramsDNS
+        $dmarc = $dmarcRecord | Where-Object Type -eq 'TXT' | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
+
+        # get SPF record
+        $spfRecord = Resolve-DnsName -DnsOnly -Type TXT -Name "_spf.$Domain" @paramsDNS
+        if (-not [System.String]::IsNullOrWhiteSpace($spfRecord))
+        {
+            $spf = $spfRecord  | Where-Object Type -eq 'TXT' | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
+        }
+        else
+        {
+            $spf = Resolve-DnsName -Name $Domain -Type TXT @paramsDNS | Where-Object Strings -match "v=spf" | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
+        }
+
+        # get DKIM records
+        $dkim = Resolve-DnsName -Name "$selector._domainkey.$Domain" -Type txt @paramsDNS
+        if ($dkim.Type -eq 'CNAME')
+        {
+            # retrieve SOA
+            if ($nameServer)
+            {
+                $paramsDNS.Server = $nameServer
+            }
+            else
+            {
+                $paramsDNS.Remove('Server')
+            }
+
+            $soaDNS = Resolve-DnsName -Name $dkim.NameHost -Type SOA @paramsDNS
+            if (-not [System.String]::IsNullOrWhiteSpace($soaDNS.PrimaryServer))
+            {
+                $paramsDNS.Server = $soaDNS.PrimaryServer
+            }
+            else
+            {
+                Write-Warning 'Could not find SOA!'
+            }
+            $dkim = Resolve-DnsName -Name $dkim.NameHost -Type TXT @paramsDNS | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
+        }
+        else
+        {
+            $dkim = $dkim | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
+        }
+
+        $output | Add-Member -MemberType NoteProperty -Name Domain -Value $Domain
+        $output | Add-Member -MemberType NoteProperty -Name MXRecords -Value $mx
+        $output | Add-Member -MemberType NoteProperty -Name DMARCRecord -Value $dmarc.Record
+        $output | Add-Member -MemberType NoteProperty -Name SPFRecord -Value $spf.Record
+        $output | Add-Member -MemberType NoteProperty -Name DKIMRecord -Value $dkim.Record
+
+    }
+
+    end
+    {
+        $output
+    }
+
+}
+
+function global:Get-JunkConfiguration
+{
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline=$true)]
+        [System.String[]]
+        $Identity,
+
+        [System.Management.Automation.SwitchParameter]
+        $ShowProgress,
+
+        [System.Management.Automation.SwitchParameter]
+        $AllProperties
+
+    )
+
+    begin
+    {
+        # initiate variables
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        $collection = [System.Collections.ArrayList]@()
+        [System.Int32]$j = '1'
+    }
+
+    process
+    {
+        foreach ($Id in $Identity)
+        {
+            if ($ShowProgress)
+            {
+                $progressParams = @{
+                    Activity = "Processing user - $($Id)"
+                    PercentComplete = $j / $Identity.count * 100
+                    Status = "Remaining: $($Identity.count - $j) out of $($Identity.count)"
+                }
+                Write-Progress @progressParams
+            }
+
+            $j++
+
+            $setting = New-Object -TypeName psobject
+            $setting | Add-Member -MemberType NoteProperty -Name Identity -Value $Id
+
+            try
+            {
+                $junkFolder = Get-MailboxJunkEmailConfiguration -Identity $Id -ErrorAction Stop
+
+                $setting | Add-Member -MemberType NoteProperty -Name Status -Value $junkFolder.Enabled
+                
+                if ($AllProperties)
+                {
+                    $setting | Add-Member -MemberType NoteProperty -Name TrustedListsOnly -Value $junkFolder.TrustedListsOnly
+                    $setting | Add-Member -MemberType NoteProperty -Name ContactsTrusted -Value $junkFolder.ContactsTrusted
+                    $setting | Add-Member -MemberType NoteProperty -Name TrustedSendersAndDomains -Value $junkFolder.TrustedSendersAndDomains
+                    $setting | Add-Member -MemberType NoteProperty -Name BlockedSendersAndDomains -Value $junkFolder.BlockedSendersAndDomains
+                    $setting | Add-Member -MemberType NoteProperty -Name TrustedRecipientsAndDomains -Value $junkFolder.TrustedRecipientsAndDomains
+                }
+            }
+            catch
+            {
+                $setting | Add-Member -MemberType NoteProperty -Name Status -Value $_
+            }
+
+            $collection += $setting
+
+        }
+
+    }
+
+    end
+    {
+        if ($ShowProgress)
+        {
+            $progressParams.Status = "Ready"
+            $progressParams.Add('Completed',$true)
+            Write-Progress @progressParams
+        }
+        $collection
+        $timer.Stop()
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
+    }
+}
+
