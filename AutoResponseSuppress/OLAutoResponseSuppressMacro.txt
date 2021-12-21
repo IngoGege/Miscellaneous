@@ -1,0 +1,72 @@
+Public Sub GetSuppressAutoResponseValue()
+    'https://docs.microsoft.com/openspecs/exchange_server_protocols/ms-oxcmail/ced68690-498a-4567-9d14-5c01f974d8b1
+    Dim objApp As Outlook.Application
+    Dim propertyAccessor As Outlook.propertyAccessor
+
+    Set objApp = Application
+    On Error Resume Next
+    Select Case TypeName(objApp.ActiveWindow)
+        Case "Explorer"
+            Set GetCurrentItem = objApp.ActiveExplorer.Selection.Item(1)
+        Case "Inspector"
+            Set GetCurrentItem = objApp.ActiveInspector.CurrentItem
+    End Select
+    Suppress = GetCurrentItem.propertyAccessor.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x3FDF0003")
+    If (Suppress) Then
+        MsgBox "Current value:" & Suppress
+    End If
+    Set objApp = Nothing
+End Sub
+
+Public Sub SetSuppressOOF()
+    'https://docs.microsoft.com/openspecs/exchange_server_protocols/ms-oxcmail/ced68690-498a-4567-9d14-5c01f974d8b1
+    Dim objApp As Outlook.Application
+    Dim propertyAccessor As Outlook.propertyAccessor
+    Dim GetCurrentItem As Outlook.MailItem
+    Dim PR_AUTO_RESPONSE_SUPPRESS As String
+    PR_AUTO_RESPONSE_SUPPRESS = "http://schemas.microsoft.com/mapi/proptag/0x3FDF0003"
+    Dim SuppressValue As Long
+    SuppressValue = "16"
+
+    Set objApp = Application
+    On Error Resume Next
+    Select Case TypeName(objApp.ActiveWindow)
+        Case "Explorer"
+            Set GetCurrentItem = objApp.ActiveExplorer.Selection.Item(1)
+        Case "Inspector"
+            Set GetCurrentItem = objApp.ActiveInspector.CurrentItem
+    End Select
+    Set propertyAccessor = GetCurrentItem.propertyAccessor
+    propertyAccessor.SetProperty PR_AUTO_RESPONSE_SUPPRESS, SuppressValue
+
+    GetCurrentItem.Save
+
+    Set objApp = Nothing
+End Sub
+
+Public Sub ClearSuppressOOF()
+    'https://docs.microsoft.com/openspecs/exchange_server_protocols/ms-oxcmail/ced68690-498a-4567-9d14-5c01f974d8b1
+    Dim objApp As Outlook.Application
+    Dim propertyAccessor As Outlook.propertyAccessor
+    Dim GetCurrentItem As Outlook.MailItem
+    Dim PR_AUTO_RESPONSE_SUPPRESS As String
+    PR_AUTO_RESPONSE_SUPPRESS = "http://schemas.microsoft.com/mapi/proptag/0x3FDF0003"
+    Dim SuppressValue As Long
+    SuppressValue = "16"
+
+    Set objApp = Application
+    On Error Resume Next
+    Select Case TypeName(objApp.ActiveWindow)
+        Case "Explorer"
+            Set GetCurrentItem = objApp.ActiveExplorer.Selection.Item(1)
+        Case "Inspector"
+            Set GetCurrentItem = objApp.ActiveInspector.CurrentItem
+    End Select
+    Set propertyAccessor = GetCurrentItem.propertyAccessor
+    propertyAccessor.DeleteProperty PR_AUTO_RESPONSE_SUPPRESS
+
+    GetCurrentItem.Save
+
+    Set objApp = Nothing
+End Sub
+
