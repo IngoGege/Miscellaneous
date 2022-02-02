@@ -5796,7 +5796,7 @@ function global:Format-CalDiag
         $CalendarDiagnosticObjects
     )
 
-    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,SenderEmailAddress,ResponsibleUserName,ClientIntent,CreationTime,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight,AppointmentState
+    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,SenderEmailAddress,ResponsibleUserName,ClientIntent,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight,AppointmentState
 
 }
 
@@ -6084,15 +6084,18 @@ function global:Format-FolderStats
     "HiddenItemsInFolder",
     "ItemsInFolder",
     "DeletedItemsInFolder",
-    "FolderSize",
+    #"FolderSize",
+    '@{l="FolderSizeMB";e={ConvertFrom-SizeString -SizeString $_.FolderSize -ToMB}}',
     "DeletePolicy",
     "ArchivePolicy",
     "CompliancePolicy",
     "RetentionFlags",
     "ItemsInFolderAndSubfolders",
-    "FolderAndSubfolderSize",
+    #"FolderAndSubfolderSize",
+    '@{l="FolderAndSubfolderSizeMB";e={ConvertFrom-SizeString -SizeString $_.FolderAndSubfolderSize -ToMB}}',
     "TopSubject",
-    "TopSubjectSize",
+    #"TopSubjectSize",
+    '@{l="TopSubjectSizeMB";e={ConvertFrom-SizeString -SizeString $_.TopSubjectSize -ToMB}}',
     "TopSubjectCount",
     "TopSubjectClass",
     "TopSubjectPath",
@@ -6414,5 +6417,67 @@ function global:Get-JunkConfiguration
         $timer.Stop()
         Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
     }
+}
+
+function global:Get-AadProvisioningErrors
+{
+    [CmdLetBinding()]
+    param (
+        [System.String]
+        $User
+    )
+
+    if (-not [System.String]::IsNullOrEmpty($User))
+    {
+        try {
+            (Get-AzureADUser -SearchString $User).ProvisioningErrors | Where-Object -FilterScript {-not [System.String]::IsNullOrEmpty($_.ErrorDetail)} | select Timestamp,ErrorDetail
+        }
+        catch {
+            $_
+        }
+    }
+}
+
+function global:Get-AadLastDirsyncTime
+{
+    (Get-AzureADTenantDetail).CompanyLastDirSyncTime
+}
+
+function global:ConvertFrom-SizeString
+{
+param(
+    [Parameter(
+        Mandatory=$true,
+        ValueFromPipelineByPropertyName=$false,
+        Position=0)]
+    [System.String]
+    $SizeString,
+
+    [Parameter(
+        Mandatory=$false,
+        ValueFromPipelineByPropertyName=$false,
+        Position=1)]
+    [System.Management.Automation.SwitchParameter]
+    $ToMB,
+
+    [Parameter(
+        Mandatory=$false,
+        ValueFromPipelineByPropertyName=$false,
+        Position=2)]
+    [System.Management.Automation.SwitchParameter]
+    $ToGB
+)
+    $result = $SizeString -replace '(.*\()|,| [a-z]*\)', ''
+
+    if ($ToMB)
+    {
+        $result = [System.Math]::Round($result/1MB,2)
+    }
+    elseIf ($ToGB)
+    {
+        $result = [System.Math]::Round($result/1GB,2)
+    }
+
+    return $result
 }
 
