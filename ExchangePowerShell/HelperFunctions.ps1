@@ -4443,7 +4443,15 @@ function global:Get-MSGraphServicePrincipal
 
         [parameter( Position=14)]
         [System.Int32]
-        $TimeoutSec = '15'
+        $TimeoutSec = '15',
+
+        [parameter( Position=15)]
+        [System.Management.Automation.SwitchParameter]
+        $ApplicationPermissionsReport,
+
+        [parameter( Position=16)]
+        [System.Int32]
+        $MaxFilterResult
 
     )
 
@@ -4700,10 +4708,7 @@ function global:Get-MSGraphServicePrincipal
                     if ($sPNResponse.'@odata.nextLink')
                     {
                         Write-Verbose 'Need to fetch more data...'
-                        #if ($sPNResponse.'@odata.count')
-                        #{
-                            Write-Verbose "Totalcount:$($sPNResponse.'@odata.count')"
-                        #}
+                        Write-Verbose "Totalcount:$($sPNResponse.'@odata.count')"
                         [System.Int16]$counter = '2'
                         # create collection
                         $sPNCollection = [System.Collections.ArrayList]@()
@@ -4737,13 +4742,22 @@ function global:Get-MSGraphServicePrincipal
                             Write-Verbose "Pagecount:$($counter)..."
                             $counter++
 
+                            if ( $MaxFilterResult -and ($sPNCollection.Count -ge $MaxFilterResult))
+                            {
+                                Write-Verbose "MaxFilterResult reached. Will stop searching now..."
+                                $sPNResponse.'@odata.nextLink' = $null
+                                $sPNCollection = $sPNCollection  | Select-Object -First $MaxFilterResult
+                            }
+
                         } while ($sPNResponse.'@odata.nextLink')
 
                         $ServicePrincipal = $sPNCollection.id
+
                     }
                     else
                     {
                         $ServicePrincipal = $sPNResponse.value.id
+
                     }
 
                     $retryRequest = $false
@@ -4813,6 +4827,9 @@ function global:Get-MSGraphServicePrincipal
                     [void]$PowershellThread.AddParameter('MaxRetry',$MaxRetry)
                     [void]$PowershellThread.AddParameter('TimeoutSec',$TimeoutSec)
                     [void]$PowershellThread.AddParameter('ShowProgress',$false)
+                    [void]$PowershellThread.AddParameter('ReturnAppRoleAssignedTo',$ReturnAppRoleAssignedTo)
+                    [void]$PowershellThread.AddParameter('ReturnOauth2PermissionGrants',$ReturnOauth2PermissionGrants)
+                    [void]$PowershellThread.AddParameter('ApplicationPermissionsReport',$ApplicationPermissionsReport)
 
                     $PowershellThread.RunspacePool = $RunspacePool
                     $Handle = $PowershellThread.BeginInvoke()
@@ -4859,69 +4876,91 @@ function global:Get-MSGraphServicePrincipal
 
                         $j++
 
-                        $body = @{
-                            requests = @(
-                                @{
-                                    url = "/servicePrincipals/$($account)"
-                                    method = 'GET'
-                                    id = '1'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/appRoleAssignments"
-                                    method = 'GET'
-                                    id = '3'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/claimsMappingPolicies"
-                                    method = 'GET'
-                                    id = '4'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/createdObjects"
-                                    method = 'GET'
-                                    id = '5'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/delegatedPermissionClassifications"
-                                    method = 'GET'
-                                    id = '6'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/endpoints"
-                                    method = 'GET'
-                                    id = '7'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/homeRealmDiscoveryPolicies"
-                                    method = 'GET'
-                                    id = '8'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/memberOf"
-                                    method = 'GET'
-                                    id = '9'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/ownedObjects"
-                                    method = 'GET'
-                                    id = '11'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/owners"
-                                    method = 'GET'
-                                    id = '12'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/tokenIssuancePolicies"
-                                    method = 'GET'
-                                    id = '13'
-                                },
-                                @{
-                                    url = "/servicePrincipals/$($account)/tokenLifetimePolicies"
-                                    method = 'GET'
-                                    id = '14'
-                                }
-                            )
+                        if ($ApplicationPermissionsReport)
+                        {
+                            $body = @{
+                                requests = @(
+                                    @{
+                                        url = "/servicePrincipals/$($account)"
+                                        method = 'GET'
+                                        id = '1'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/appRoleAssignments"
+                                        method = 'GET'
+                                        id = '3'
+                                    }
+                                )
+                            }
+                        }
+                        else
+                        {
+
+                            $body = @{
+                                requests = @(
+                                    @{
+                                        url = "/servicePrincipals/$($account)"
+                                        method = 'GET'
+                                        id = '1'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/appRoleAssignments"
+                                        method = 'GET'
+                                        id = '3'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/claimsMappingPolicies"
+                                        method = 'GET'
+                                        id = '4'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/createdObjects"
+                                        method = 'GET'
+                                        id = '5'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/delegatedPermissionClassifications"
+                                        method = 'GET'
+                                        id = '6'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/endpoints"
+                                        method = 'GET'
+                                        id = '7'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/homeRealmDiscoveryPolicies"
+                                        method = 'GET'
+                                        id = '8'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/memberOf"
+                                        method = 'GET'
+                                        id = '9'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/ownedObjects"
+                                        method = 'GET'
+                                        id = '11'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/owners"
+                                        method = 'GET'
+                                        id = '12'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/tokenIssuancePolicies"
+                                        method = 'GET'
+                                        id = '13'
+                                    },
+                                    @{
+                                        url = "/servicePrincipals/$($account)/tokenLifetimePolicies"
+                                        method = 'GET'
+                                        id = '14'
+                                    }
+                                )
+                            }
+
                         }
 
                         if ($ReturnAppRoleAssignedTo)
@@ -4934,15 +4973,6 @@ function global:Get-MSGraphServicePrincipal
 
                             $body.requests += $appRoleAssignedTo
                         }
-                        <##else
-                        {
-                            $appRoleAssignedTo = @{
-                                    url = "/servicePrincipals/$($account)/appRoleAssignedTo/" + '$count'
-                                    method = 'GET'
-                                    id = '2'
-                                    headers = @{"ConsistencyLevel"="eventual"}
-                            }
-                        }##>
 
                         if ($ReturnOauth2PermissionGrants)
                         {
@@ -4954,15 +4984,6 @@ function global:Get-MSGraphServicePrincipal
 
                             $body.requests += $oauth2PermissionGrants
                         }
-                        <##else
-                        {
-                            $oauth2PermissionGrants = @{
-                                    url = "/servicePrincipals/$($account)/oauth2PermissionGrants/" + '$count'
-                                    method = 'GET'
-                                    id = '10'
-                                    headers = @{"ConsistencyLevel"="eventual"}
-                            }
-                        }##>
 
                         $restParams = @{
                             ContentType = 'application/json'
@@ -6479,5 +6500,25 @@ param(
     }
 
     return $result
+}
+
+function global:Update-BlockSenderList
+{
+    [CmdLetBinding()]
+    param (
+        [System.String]
+        $CSV = 'C:\temp\BlockList.csv'
+    )
+
+    try
+    {
+        $senderList = Import-Csv -Encoding utf8 -Path $CSV
+        $commandRule = 'Set-TransportRule -Identity 11e63de1-9b71-41aa-8ddc-4fc61ef2610e -FromAddressMatchesPatterns "' + $($senderList.SMTPAddress -join '","') + '"'
+        Invoke-Expression $commandRule
+    }
+    catch
+    {
+        $_
+    }
 }
 
