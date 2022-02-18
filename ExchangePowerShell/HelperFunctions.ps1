@@ -6522,3 +6522,138 @@ function global:Update-BlockSenderList
     }
 }
 
+function global:Add-MailboxFolderPermissionRecursive
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $Identity,
+
+        [System.String]
+        $User,
+
+        [System.String]
+        [ValidateSet("Author","Contributor","Editor","NonEditingAuthor","Owner","PublishingAuthor","PublishingEditor","Reviewer")]
+        $AccessRights
+    )
+
+    # get recipient
+    $trustee = Get-Recipient -Identity $User -ErrorAction SilentlyContinue
+    if ([System.String]::IsNullOrEmpty($trustee))
+    {
+        Write-Error "User $($User) couldn't be found!"
+        break
+    }
+
+    # retrieve folders with scope Inbox
+    $folderSet = Get-MailboxFolderStatistics -Identity $Identity -FolderScope Inbox
+
+    if ($folderSet.Count -gt 0)
+    {
+        Write-Verbose "Found $($folderSet.Count) folders..."
+        foreach ($folder in $folderSet)
+        {
+            $progressParams = @{
+                Activity = "Processing folder - $($folder.Name)"
+                PercentComplete = $j / $folderSet.count * 100
+                Status = "Remaining: $($folderSet.count - $j) out of $($folderSet.count)"
+            }
+            Write-Progress @progressParams
+            $j++
+
+            Write-Verbose "Processing folder:$($folder.Name)..."
+            
+            $params = @{
+                Identity = $Identity + ":" + $folder.FolderId
+                User = $trustee.Identity
+                AccessRights = $AccessRights
+                ErrorAction = 'Stop'
+            }
+            try
+            {
+                Add-MailboxFolderPermission @params
+            }
+            catch
+            {
+                if ('UserAlreadyExistsInPermissionEntryException' -eq $_.CategoryInfo.Reason)
+                {
+                    Write-Verbose "Existing permission found. Will replace..."
+                    Set-MailboxFolderPermission @params
+                }
+                else
+                {
+                    Write-Host "Error setting permission on folder $($folder):$_"
+                }
+            }
+        }
+
+        $progressParams.Status = "Ready"
+        Write-Progress @progressParams
+    }
+}
+
+function global:Remove-MailboxFolderPermissionRecursive
+{
+    [CmdletBinding()]
+    param(
+        [System.String]
+        $Identity,
+
+        [System.String]
+        $User
+    )
+
+    # get recipient
+    $trustee = Get-Recipient -Identity $User -ErrorAction SilentlyContinue
+    if ([System.String]::IsNullOrEmpty($trustee))
+    {
+        Write-Error "User $($User) couldn't be found!"
+        break
+    }
+
+    # retrieve folders with scope Inbox
+    $folderSet = Get-MailboxFolderStatistics -Identity $Identity -FolderScope Inbox
+
+    if ($folderSet.Count -gt 0)
+    {
+        Write-Verbose "Found $($folderSet.Count) folders..."
+        foreach ($folder in $folderSet)
+        {
+            $progressParams = @{
+                Activity = "Processing folder - $($folder.Name)"
+                PercentComplete = $j / $folderSet.count * 100
+                Status = "Remaining: $($folderSet.count - $j) out of $($folderSet.count)"
+            }
+            Write-Progress @progressParams
+            $j++
+
+            Write-Verbose "Processing folder:$($folder.Name)..."
+            $params = @{
+                Identity = $Identity + ":" + $folder.FolderId
+                User = $trustee.Identity
+                ErrorAction = 'Stop'
+                Confirm = $false
+            }
+
+            try
+            {
+                Remove-MailboxFolderPermission @params
+            }
+            catch
+            {
+                if ('UserNotFoundInPermissionEntryException' -eq $_.CategoryInfo.Reason)
+                {
+                     Write-Verbose 'No existing permission for this user to remove...'
+                }
+                else
+                {
+                    Write-Host "Error removing permission on folder $($folder.Name):$_"
+                }
+            }
+        }
+
+        $progressParams.Status = "Ready"
+        Write-Progress @progressParams
+    }
+}
+
