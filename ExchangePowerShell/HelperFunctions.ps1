@@ -6534,7 +6534,10 @@ function global:Add-MailboxFolderPermissionRecursive
 
         [System.String]
         [ValidateSet("Author","Contributor","Editor","NonEditingAuthor","Owner","PublishingAuthor","PublishingEditor","Reviewer")]
-        $AccessRights
+        $AccessRights,
+
+        [System.String]
+        $FilterFolderPath
     )
 
     # get recipient
@@ -6548,15 +6551,22 @@ function global:Add-MailboxFolderPermissionRecursive
     # retrieve folders with scope Inbox
     $folderSet = Get-MailboxFolderStatistics -Identity $Identity -FolderScope Inbox
 
-    if ($folderSet.Count -gt 0)
+    if ($FilterFolderPath)
     {
-        Write-Verbose "Found $($folderSet.Count) folders..."
+        $folderSet = $folderSet | Where-Object {$_.FolderPath -Match $FilterFolderPath}
+        Write-Verbose "Found the following folders for filter $($FilterFolderPath):"
+        $folderSet.FolderPath
+    }
+
+    if (-not [System.String]::IsNullOrEmpty($folderSet) )
+    {
+        Write-Verbose "Found $(($folderSet | measure).Count) folders..."
         foreach ($folder in $folderSet)
         {
             $progressParams = @{
                 Activity = "Processing folder - $($folder.Name)"
-                PercentComplete = $j / $folderSet.count * 100
-                Status = "Remaining: $($folderSet.count - $j) out of $($folderSet.count)"
+                PercentComplete = $j / ($folderSet | measure).Count * 100
+                Status = "Remaining: $(($folderSet | measure).Count - $j) out of $(($folderSet | measure).Count)"
             }
             Write-Progress @progressParams
             $j++
@@ -6600,7 +6610,10 @@ function global:Remove-MailboxFolderPermissionRecursive
         $Identity,
 
         [System.String]
-        $User
+        $User,
+
+        [System.String]
+        $FilterFolderPath
     )
 
     # get recipient
@@ -6614,15 +6627,22 @@ function global:Remove-MailboxFolderPermissionRecursive
     # retrieve folders with scope Inbox
     $folderSet = Get-MailboxFolderStatistics -Identity $Identity -FolderScope Inbox
 
-    if ($folderSet.Count -gt 0)
+    if ($FilterFolderPath)
     {
-        Write-Verbose "Found $($folderSet.Count) folders..."
+        $folderSet = $folderSet | Where-Object {$_.FolderPath -Match $FilterFolderPath}
+        Write-Verbose "Found the following folders for filter $($FilterFolderPath):"
+        $folderSet.FolderPath
+    }
+
+    if (-not [System.String]::IsNullOrEmpty($folderSet) )
+    {
+        Write-Verbose "Found $(($folderSet | measure).Count) folders..."
         foreach ($folder in $folderSet)
         {
             $progressParams = @{
                 Activity = "Processing folder - $($folder.Name)"
-                PercentComplete = $j / $folderSet.count * 100
-                Status = "Remaining: $($folderSet.count - $j) out of $($folderSet.count)"
+                PercentComplete = $j / ($folderSet | measure).Count * 100
+                Status = "Remaining: $(($folderSet | measure).Count - $j) out of $(($folderSet | measure).Count)"
             }
             Write-Progress @progressParams
             $j++
@@ -6654,6 +6674,116 @@ function global:Remove-MailboxFolderPermissionRecursive
 
         $progressParams.Status = "Ready"
         Write-Progress @progressParams
+    }
+}
+
+function global:Get-AADServicePrincipalEXOReport
+{
+    [CmdletBinding()]
+    param(
+        [System.Management.Automation.SwitchParameter]
+        $IncludePolicyCheck
+    )
+    begin
+    {
+        # start timer
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        # initiate collection
+        $collection = [System.Collections.ArrayList]@()
+        # retrieve Microsoft Graph and Exchange Online servicePrincipals
+        $MSGraphEXOSPN = Get-MgServicePrincipal -Filter "(AppId eq '00000002-0000-0ff1-ce00-000000000000') or (AppId eq '00000003-0000-0000-c000-000000000000')"
+        # extract AppRoles
+        $AppRoles = $MSGraphEXOSPN.AppRoles | Where-Object { $_.Value -match 'Mail\.|MailboxSettings\.|Calendars\.|Contacts\.|full_access_as_app'} | Sort-Object -Property Value -Unique
+        # retrieve all servicePrincipals
+        $AllSPN = Get-MgServicePrincipal -ExpandProperty AppRoleAssignments -All
+        Write-Verbose "Found $($AllSPN.Count) serviceprincipals..."
+        # filter for serviceprincipals with AppRoleAssignments
+        $SPNwithAppRoles = $AllSPN | Where-Object { -not [System.String]::IsNullOrEmpty($_.AppRoleAssignments)}
+        Write-Verbose "Found $($SPNwithAppRoles.Count) serviceprincipals with AppRoleAssignments..."
+        Write-Verbose "Retrieved all ServicePrincipals processing time:$($timer.Elapsed.ToString())"
+        
+        if ($IncludePolicyCheck)
+        {
+            # retreieve all application access policies from EXO
+            $AppPolicies = Get-ApplicationAccessPolicy -ErrorAction SilentlyContinue
+        }
+
+        function Test-ServicePrincipal
+        {
+            [OutputType([System.Boolean])]
+            param(
+                [Microsoft.Graph.PowerShell.Models.MicrosoftGraphServicePrincipal]
+                $ServicePrincipal,
+
+                [Microsoft.Graph.PowerShell.Models.MicrosoftGraphAppRole[]]
+                $AppRoles
+            )
+
+            foreach ($AppRoleID in $ServicePrincipal.AppRoleAssignments.AppRoleId)
+            {
+                if ($AppRoles.Id.Contains($AppRoleID))
+                {
+                    return $true
+                    break
+                }
+                else
+                {
+                    return $false
+                }
+            }
+        }
+
+    }
+
+    process
+    {
+        foreach ($SPN in $SPNwithAppRoles)
+        {
+            # create object for current serviceprincipal
+            $sPNObject = New-Object -TypeName psobject
+            # check for relevant permissions
+            if (Test-ServicePrincipal -ServicePrincipal $SPN -AppRoles $AppRoles )
+            {
+                $sPNObject | Add-Member -MemberType NoteProperty -Name AppDisplayName -Value $SPN.AppDisplayName
+                $sPNObject | Add-Member -MemberType NoteProperty -Name ObjectId -Value $SPN.Id
+                $sPNObject | Add-Member -MemberType NoteProperty -Name AppId -Value $SPN.AppId
+                $sPNObject | Add-Member -MemberType NoteProperty -Name AppOwnerOrganizationId -Value $SPN.AppOwnerOrganizationId
+
+                if ($IncludePolicyCheck)
+                {
+                    if ([System.String]::IsNullOrEmpty($AppPolicies))
+                    {
+                        $sPNObject | Add-Member -MemberType NoteProperty -Name EXOPolicyExists -Value 'None found!'
+                    }
+                    else
+                    {
+                        $sPNObject | Add-Member -MemberType NoteProperty -Name EXOPolicyExists -Value $($AppPolicies.AppId.Contains($SPN.AppId))
+                    }
+                    # initiate variable
+                    [System.String]$Permissions = ''
+                    # build permission string from AppRoleId
+                    $Permissions = ($SPN.AppRoleAssignments.AppRoleId | ForEach-Object{$perm=$_ ; $AppRoles | Where-Object {$_.Id -eq $perm}}).Value -join '|'
+                    $sPNObject | Add-Member -MemberType NoteProperty -Name Permissions -Value $Permissions
+                }
+
+                # add to collection for output
+                $collection += $sPNObject
+            }
+        }
+    }
+
+    end
+    {
+        if ([System.String]::IsNullOrEmpty($collection))
+        {
+            Write-Host 'No enterprise application with EXO related permissions found!'
+        }
+        else
+        {
+            $collection
+        }
+        $timer.Stop()
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
     }
 }
 
