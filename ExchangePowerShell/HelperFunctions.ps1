@@ -346,7 +346,7 @@ function global:Prompt
         $connectString += "Connected to $($ConnectedTo) as $($session.Runspace.ConnectionInfo.Credential.UserName) "
     }
 
-    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " $($connectString) ProccessID:$PID Elevated:$elevated"
+    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " $($connectString) ProcessID:$PID Elevated:$elevated"
     Write-Host '[' -NoNewline
     Write-Host (Get-Date -UFormat '%T')-NoNewline
     Write-Host ']:' -NoNewline
@@ -6513,8 +6513,17 @@ function global:Update-BlockSenderList
     try
     {
         $senderList = Import-Csv -Encoding utf8 -Path $CSV
-        $commandRule = 'Set-TransportRule -Identity 11e63de1-9b71-41aa-8ddc-4fc61ef2610e -FromAddressMatchesPatterns "' + $($senderList.SMTPAddress -join '","') + '"'
-        Invoke-Expression $commandRule
+        $SenderList01 = $senderList | select -First 200
+        $SenderList02 = $senderList | select -Skip 200
+
+        $commandRule01 = 'Set-TransportRule -Identity 11e63de1-9b71-41aa-8ddc-4fc61ef2610e -FromAddressMatchesPatterns "' + $($senderList01.SMTPAddress -join '","') + '"'
+        Invoke-Expression $commandRule01
+
+        if (-not [System.String]::IsNullOrEmpty($SenderList02))
+        {
+            $commandRule02 = 'Set-TransportRule -Identity 070bdc77-d095-40df-b8cc-0c6213c13802 -FromAddressMatchesPatterns "' + $($senderList02.SMTPAddress -join '","') + '"'
+            Invoke-Expression $commandRule02
+        }
     }
     catch
     {
