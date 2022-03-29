@@ -346,10 +346,10 @@ function global:Prompt
         $connectString += "Connected to $($ConnectedTo) as $($session.Runspace.ConnectionInfo.Credential.UserName) "
     }
 
-    $Host.UI.RawUI.WindowTitle = (Get-Date -UFormat '%y/%m/%d %R').Tostring() + " $($connectString) ProcessID:$PID Elevated:$elevated"
+    $Host.UI.RawUI.WindowTitle = (Get-Date $([System.DateTime]::Now.ToUniversalTime()) -UFormat '%y/%m/%d %R').Tostring() + " UTC $($connectString) ProcessID:$PID Elevated:$elevated"
     Write-Host '[' -NoNewline
-    Write-Host (Get-Date -UFormat '%T')-NoNewline
-    Write-Host ']:' -NoNewline
+    Write-Host (Get-Date $([System.DateTime]::Now.ToUniversalTime()) -UFormat '%T')-NoNewline
+    Write-Host ' UTC]:' -NoNewline
     Write-Host (Split-Path (Get-Location) -Leaf) -NoNewline
     return "> "
 }
