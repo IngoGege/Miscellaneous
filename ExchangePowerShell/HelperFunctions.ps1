@@ -7123,3 +7123,345 @@ function global:Set-Oauth2PermissionGrantforMG
     }
 }
 
+function global:Set-AppRoleAssignmentforMG
+{
+    <#
+        .SYNOPSIS
+            This function creates AppRoleAssignment on serviceprincipal for Microsoft Graph and Exchange Online permissions.
+        .DESCRIPTION
+            This function creates AppRoleAssignment on serviceprincipal for Microsoft Graph and Exchange Online permissions, which are supported by ApplicationAccessPolicy.
+        .PARAMETER ObjectID
+            The parameter ObjectID defines AAD object id of the service principal in your tenant.
+        .PARAMETER Roles
+            This parameter Roles defines comma seperated roles you want to grant.
+        .PARAMETER AddApplicationPermissions
+            The parameter AddApplicationPermissions will add the permissins to the application (not serviceprincipal). This is only possible, when the application is in the same tenant and the user has the required permissions.
+        .PARAMETER RemoveAppRoleAssignment
+            The parameter RemoveAppRoleAssignment will remove existing grants from serviceprincipal defined in the parameter Roles.
+        .EXAMPLE
+            # add admin consent for permissions Mail.ReadWrite,Mail.Send on serviceprincipal with objectId 4462f870-4605-4ad6-bf6b-ccc61769bee8
+            Set-AppRoleAssignmentforMG -ObjectID 4462f870-4605-4ad6-bf6b-ccc61769bee8 -Verbose -Roles Mail.ReadWrite,Mail.Send
+            # remove the consent for permissions Calendars.ReadWrite,Contacts.Read on serviceprincipal with objectId 4462f870-4605-4ad6-bf6b-ccc61769bee8
+            Set-AppRoleAssignmentforMG -ObjectID 4462f870-4605-4ad6-bf6b-ccc61769bee8 -Verbose -Roles Calendars.ReadWrite,Contacts.Read -RemoveAppRoleAssignment
+            # add admin consent for permissions Mail.ReadWrite on serviceprincipal with objectId 4462f870-4605-4ad6-bf6b-ccc61769bee8 and add permission to application
+            Set-AppRoleAssignmentforMG -ObjectID 4462f870-4605-4ad6-bf6b-ccc61769bee8 -Verbose -Roles Mail.ReadWrite -AddApplicationPermissions
+        .NOTES
+            If you want to leverage all functionality you will need to provide an access token with the following claims:
+                AppRoleAssignment.ReadWrite.All
+                Application.ReadWrite.All
+            Connect-MgGraph -Scopes AppRoleAssignment.ReadWrite.All,Application.ReadWrite.All
+        .LINK
+            https://docs.microsoft.com/en-us/graph/api/serviceprincipal-post-approleassignments?view=graph-rest-1.0&tabs=http
+            https://docs.microsoft.com/en-us/graph/api/serviceprincipal-delete-approleassignments?view=graph-rest-1.0&tabs=http
+            https://docs.microsoft.com/en-us/graph/migrate-azure-ad-graph-configure-permissions#request-3
+    #>
+    [CmdletBinding(DefaultParameterSetName = "AddAdminConsent")]
+    param(
+        [parameter(
+            ParameterSetName="AddAdminConsent",
+            Mandatory=$true,
+            Position=0
+        )]
+        [parameter(
+            ParameterSetName="AddAppPermissions",
+            Mandatory=$true,
+            Position=0
+        )]
+        [parameter(
+            ParameterSetName="RemoveAppRoleAssignments",
+            Mandatory=$true,
+            Position=0
+        )]
+        [System.String]
+        $ObjectID,
+
+        [parameter(
+            ParameterSetName="AddAdminConsent",
+            Mandatory=$true,
+            Position=1
+        )]
+        [parameter(
+            ParameterSetName="AddAppPermissions",
+            Mandatory=$true,
+            Position=1
+        )]
+        [parameter(
+            ParameterSetName="RemoveAppRoleAssignments",
+            Mandatory=$true,
+            Position=1
+        )]
+        [System.String[]]
+        [ValidateSet("Calendars.Read","Calendars.ReadWrite","Contacts.Read",
+                    "Contacts.ReadWrite","full_access_as_app","IMAP.AccessAsApp",
+                    "Mail.Read","Mail.ReadBasic","Mail.ReadBasic.All",
+                    "Mail.ReadWrite","Mail.Send","MailboxSettings.Read",
+                    "MailboxSettings.ReadWrite")]
+        $Roles,
+
+        [parameter(
+            ParameterSetName="AddAppPermissions",
+            Mandatory=$true,
+            Position=2
+        )]
+        [System.Management.Automation.SwitchParameter]
+        $AddApplicationPermissions,
+
+        [parameter(
+            ParameterSetName="RemoveAppRoleAssignments",
+            Mandatory=$true,
+            Position=2
+        )]
+        [System.Management.Automation.SwitchParameter]
+        $RemoveAppRoleAssignment
+    )
+
+    begin
+    {
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        # initiate variable
+        $missingPermissions = [System.Collections.ArrayList]@()
+        $existingAppRoleAssignment = [System.Collections.ArrayList]@()
+        # check for required permissions
+        $requiredMGPermissions = @('AppRoleAssignment.ReadWrite.All','Application.ReadWrite.All')
+        # get current context
+        $currentMGContext = Get-MgContext
+        if (-not [System.String]::IsNullOrEmpty($currentMGContext))
+        {
+            foreach ($permission in $requiredMGPermissions)
+            {
+                if (-not $currentMGContext.Scopes.Contains($permission))
+                {
+                    Write-Error "Required permission missing:$($permission)"
+                    [System.Boolean]$insufficientPerms = $true
+                }
+            }
+            if ($insufficientPerms)
+            {
+                break
+            }
+        }
+
+        # retrieve serviceprincipal
+        try
+        {
+            $servicePrincipal = Get-MgServicePrincipal -ServicePrincipalId $ObjectID -ExpandProperty AppRoleAssignments -ErrorAction Stop
+        }
+        catch
+        {
+            $_.Exception
+            break
+        }
+        # retrieve Exchange Online and Microsoft Graph servicePrincipals
+        $MSGraphEXOSPN = Get-MgServicePrincipal -Filter "(AppId eq '00000002-0000-0ff1-ce00-000000000000') or (AppId eq '00000003-0000-0000-c000-000000000000')"
+        # extract AppRoles
+        $EXOAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'} ).AppRoles | Where-Object { $_.Value -match "^(full_access_as_app|IMAP.AccessAsApp)$"}
+        $MSGraphAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000003-0000-0000-c000-000000000000'} ).AppRoles | Where-Object { $_.Value -match 'Mail\.|MailboxSettings\.|Calendars\.|Contacts\.'}
+        # get Ids
+        $roleDetails = [System.Collections.ArrayList]@()
+        $roleDetails += $EXOAppRoles | Where-Object {$_.Value -match "^($($Roles -join '|'))$"}
+        $roleDetails += $MSGraphAppRoles | Where-Object {$_.Value -match "^($($Roles -join '|'))$"}
+        
+        if ($AddApplicationPermissions)
+        {
+            # get application
+            $appFilter = "AppId eq '" + $servicePrincipal.AppId +"'"
+            $app = Get-MgApplication -Filter $appFilter
+            if (-not [System.String]::IsNullOrEmpty($app))
+            {
+                $EXOPerms = $EXOAppRoles | Where-Object {$_.Value -match "^($($Roles -join '|'))$"}
+                $MSGraphPerms = $MSGraphAppRoles | Where-Object {$_.Value -match "^($($Roles -join '|'))$"}
+            }
+        }
+    }
+
+    process
+    {
+        # grant admin consent using AppRoleAssignments
+        if ([System.String]::IsNullOrEmpty($servicePrincipal.AppRoleAssignments))
+        {
+            $missingPermissions = $roleDetails
+        }
+        else
+        {
+            # checking for existing permissions
+            foreach ($role in $roleDetails)
+            {
+                if ($servicePrincipal.AppRoleAssignments.AppRoleId.Contains($role.Id))
+                {
+                    Write-Verbose "Admin consent exists:$($role.Value)"
+                    if ($RemoveAppRoleAssignment)
+                    {
+                        # get all assignments to be removed
+                        $existingAppRoleAssignment += $servicePrincipal.AppRoleAssignments | Where-Object {$_.AppRoleId -eq $role.Id}
+                    }
+                }
+                else
+                {
+                    # add missing permissions for processing
+                    [System.Void]$missingPermissions.Add($role)
+                }
+            }
+        }
+
+        if ($RemoveAppRoleAssignment)
+        {
+            if ([System.String]::IsNullOrEmpty($existingAppRoleAssignment))
+            {
+                Write-Host 'No admin consent exists. Nothing to do!'
+            }
+            else
+            {
+                foreach ($appRoleAssignment in $existingAppRoleAssignment)
+                {
+                    $paramsRemove = @{
+                        AppRoleAssignmentId = $appRoleAssignment.Id
+                        ServicePrincipalId = $ObjectID
+                    }
+                    Remove-MgServicePrincipalAppRoleAssignment @paramsRemove
+                }
+            }
+        }
+        else
+        {
+
+        if ([System.String]::IsNullOrEmpty($missingPermissions))
+        {
+            Write-Host 'All admin consent already exists. Nothing to do!'
+        }
+        else
+        {
+            Write-Verbose "The following admin consent is missing: $($missingPermissions.Value)"
+            foreach ($permission in $missingPermissions)
+            {
+                # build body
+                # checking for either MS Graph or EXO resource
+                if ($permission.Value -match 'full_access_as_app|IMAP.AccessAsApp')
+                {
+                    Write-Verbose "Use EXO as resourceID as following permission is only there available:$($permission.Value)"
+                    $resourceID = ($MSGraphEXOSPN | Where-Object {$_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'}).Id
+                }
+                else
+                {
+                    Write-Verbose "Use MS Graph as resourceID as following permission is only there available:$($permission.Value)"
+                    $resourceID = ($MSGraphEXOSPN | Where-Object {$_.AppID -eq '00000003-0000-0000-c000-000000000000'}).Id
+                }
+
+                $appRoleAssignment = @{
+                    "principalId"= $ObjectID
+                    "resourceId"= $resourceID
+                    "appRoleId"= $permission.Id
+                }
+
+                try
+                {
+                    $newAppRoleAssignment = New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $ObjectID -BodyParameter $appRoleAssignment -ErrorAction Stop
+                }
+                catch
+                {
+                    $_.Exception
+                }
+            }
+        }
+
+        # add permission to application
+        if ($AddApplicationPermissions)
+        {
+            if ([System.String]::IsNullOrEmpty($app))
+            {
+                Write-Host "App couldn't be found in tenant and therefore not updated. Please check manually!"
+                break
+            }
+
+            if (-not [System.String]::IsNullOrEmpty($EXOPerms))
+            {
+                $EXOPermsExisting = $app.RequiredResourceAccess | Where-Object { $_.ResourceAppId -eq '00000002-0000-0ff1-ce00-000000000000' }
+                if ([System.String]::IsNullOrEmpty($EXOPermsExisting))
+                {
+                    # add EXO resource
+                    $app.RequiredResourceAccess += @{
+                        ResourceAppId = '00000002-0000-0ff1-ce00-000000000000'; 
+                        ResourceAccess = @()
+                    }
+
+                    foreach ($role in $EXOPerms)
+                    {
+                        ($app.RequiredResourceAccess | Where-Object { $_.ResourceAppId -eq '00000002-0000-0ff1-ce00-000000000000' }).ResourceAccess += @{
+                                    Id = $role.Id
+                                    Type ='Role'
+                                }
+                    }
+                }
+                else
+                {
+                    foreach ($role in $EXOPerms)
+                    {
+                        if (-not $EXOPermsExisting.ResourceAccess.Id.Contains($role.Id))
+                        {
+                            ($app.RequiredResourceAccess | Where-Object { $_.ResourceAppId -eq '00000002-0000-0ff1-ce00-000000000000' }).ResourceAccess += @{
+                                    Id = $role.Id
+                                    Type ='Role'
+                                }
+                        }
+                        else
+                        {
+                            Write-Verbose "Permission already exists:$($role.Id)"
+                        }
+                    }
+                }
+            }
+
+            # get existing MS Graph permissions and add missing
+            if (-not [System.String]::IsNullOrEmpty($MSGraphPerms))
+            {
+                $MSGraphPermsExisting = $app.RequiredResourceAccess | Where-Object { $_.ResourceAppId -eq '00000003-0000-0000-c000-000000000000' }
+                if ([System.String]::IsNullOrEmpty($MSGraphPermsExisting))
+                {
+                    # add MS Graph resource
+                    $app.RequiredResourceAccess += @{
+                        ResourceAppId = '00000003-0000-0000-c000-000000000000'; 
+                        ResourceAccess = @()
+                    }
+
+                    foreach ($role in $MSGraphPerms)
+                    {
+                        ($app.RequiredResourceAccess | Where-Object { $_.ResourceAppId -eq '00000003-0000-0000-c000-000000000000' }).ResourceAccess += @{
+                                    Id = $role.Id
+                                    Type ='Role'
+                                }
+                    }
+                }
+                else
+                {
+                    foreach ($role in $MSGraphPerms)
+                    {
+                        if (-not $MSGraphPermsExisting.ResourceAccess.Id.Contains($role.Id))
+                        {
+                            ($app.RequiredResourceAccess | Where-Object { $_.ResourceAppId -eq '00000003-0000-0000-c000-000000000000' }).ResourceAccess += @{
+                                    Id = $role.Id
+                                    Type ='Role'
+                                }
+                        }
+                        else
+                        {
+                            Write-Verbose "Permission already exists:$($role.Id)"
+                        }
+                    }
+                }
+            }
+
+            # update existing application
+            Update-MgApplication -ApplicationId $app.Id -RequiredResourceAccess $app.RequiredResourceAccess 
+        }
+        
+        }
+
+    }
+
+    end
+    {
+        $timer.Stop()
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
+    }
+}
+
