@@ -6513,16 +6513,24 @@ function global:Update-BlockSenderList
     try
     {
         $senderList = Import-Csv -Encoding utf8 -Path $CSV
-        $SenderList01 = $senderList | select -First 200
-        $SenderList02 = $senderList | select -Skip 200
+        $SenderList01 = $senderList[0..199]
+        $SenderList02 = $senderList[200..380]
+        $SenderList03 = $senderList[381..599]
 
         $commandRule01 = 'Set-TransportRule -Identity 11e63de1-9b71-41aa-8ddc-4fc61ef2610e -FromAddressMatchesPatterns "' + $($senderList01.SMTPAddress -join '","') + '"'
         Invoke-Expression $commandRule01
 
         if (-not [System.String]::IsNullOrEmpty($SenderList02))
         {
+            Write-Verbose 'Processing rule #2...'
             $commandRule02 = 'Set-TransportRule -Identity 070bdc77-d095-40df-b8cc-0c6213c13802 -FromAddressMatchesPatterns "' + $($senderList02.SMTPAddress -join '","') + '"'
             Invoke-Expression $commandRule02
+        }
+        if (-not [System.String]::IsNullOrEmpty($SenderList03))
+        {
+            Write-Verbose 'Processing rule #3...'
+            $commandRule03 = 'Set-TransportRule -Identity e5a656f4-7ec5-4064-84cb-be425214f24b -FromAddressMatchesPatterns "' + $($senderList03.SMTPAddress -join '","') + '"'
+            Invoke-Expression $commandRule03
         }
     }
     catch
