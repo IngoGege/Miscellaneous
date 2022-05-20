@@ -7014,6 +7014,11 @@ function global:Set-Oauth2PermissionGrantforMG
                 break
             }
         }
+        else
+        {
+            Write-Warning 'No existing connection. Please connect to MS Graph first! e.g.:Connect-MgGraph -Scopes User.ReadBasic.All,Application.ReadWrite.All,DelegatedPermissionGrant.ReadWrite.All'
+            break
+        }
         # retrieve serviceprincipal
         try
         {
@@ -7240,6 +7245,11 @@ function global:Set-AppRoleAssignmentforMG
             {
                 break
             }
+        }
+        else
+        {
+            Write-Warning 'No existing connection. Please connect to MS Graph first! e.g.:Connect-MgGraph -Scopes AppRoleAssignment.ReadWrite.All,Application.ReadWrite.All'
+            break
         }
 
         # retrieve serviceprincipal
