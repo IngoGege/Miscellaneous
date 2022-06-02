@@ -331,19 +331,15 @@ function global:Prompt
             The function customize your PowerShell window based on your connection: Either EXO or SCC.
     #>
     [System.Boolean]$elevated = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')
-    $openSessions = Get-PSSession | Where-Object -FilterScript {$_.State -eq 'Opened'}
-    $connectString = ''
-    foreach ( $session in $openSessions)
+    $connectionContexts = [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts()
+    foreach ($context in $connectionContexts)
     {
-        if ($session.ComputerName -match 'compliance')
+        switch ($context.ConnectionUri)
         {
-            $ConnectedTo = 'SCC'
+            'https://outlook.office365.com'                 {$ConnectedTo = 'EXO'}
+            'https://ps.compliance.protection.outlook.com'  {$ConnectedTo = 'SCC'}
         }
-        else
-        {
-            $ConnectedTo = 'EXO'
-        }
-        $connectString += "Connected to $($ConnectedTo) as $($session.Runspace.ConnectionInfo.Credential.UserName) "
+        $connectString += "Connected to $($ConnectedTo) as $($context.PowerShellCredentials.UserName) IsRpsSession:$($context.IsRpsSession) ExoModuleVersion:$($context.ExoModuleVersion)"
     }
 
     $Host.UI.RawUI.WindowTitle = (Get-Date $([System.DateTime]::Now.ToUniversalTime()) -UFormat '%y/%m/%d %R').Tostring() + " UTC $($connectString) ProcessID:$PID Elevated:$elevated"
@@ -7473,5 +7469,10 @@ function global:Set-AppRoleAssignmentforMG
         $timer.Stop()
         Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
     }
+}
+
+function global:Get-EXOAllConnectionContexts
+{
+    [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts()
 }
 
