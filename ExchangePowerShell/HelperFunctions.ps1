@@ -332,7 +332,7 @@ function global:Prompt
     #>
     Import-Module -Name ExchangeOnlineManagement -Force
     [System.Boolean]$elevated = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')
-    $connectionContexts = [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts()
+    $connectionContexts = [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts() | Where-Object {-not [System.String]::IsNullOrEmpty($_.PowerShellCredentials)}
     foreach ($context in $connectionContexts)
     {
         switch ($context.ConnectionUri)
