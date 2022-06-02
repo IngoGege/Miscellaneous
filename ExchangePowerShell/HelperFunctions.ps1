@@ -330,6 +330,7 @@ function global:Prompt
         .DESCRIPTION
             The function customize your PowerShell window based on your connection: Either EXO or SCC.
     #>
+    Import-Module -Name ExchangeOnlineManagement -Force
     [System.Boolean]$elevated = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')
     $connectionContexts = [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts()
     foreach ($context in $connectionContexts)
@@ -7473,6 +7474,7 @@ function global:Set-AppRoleAssignmentforMG
 
 function global:Get-EXOAllConnectionContexts
 {
+    Import-Module -Name ExchangeOnlineManagement -Force
     [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts()
 }
 
