@@ -7478,3 +7478,41 @@ function global:Get-EXOAllConnectionContexts
     [Microsoft.Exchange.Management.ExoPowershellSnapin.ConnectionContextFactory]::GetAllConnectionContexts()
 }
 
+function global:Remove-EXO
+{
+    Disconnect-ExchangeOnline -Confirm:$false
+}
+
+function global:Format-MessageTraceDetail
+{
+    Param (
+        [Parameter( Mandatory=$true, Position=0)]
+        [System.Object[]]
+        $MessageTraceDetail
+    )
+
+    foreach ($trace in $MessageTraceDetail)
+    {
+        # initiate custom objects
+         $detailData = New-Object -TypeName psobject
+         $detailObject = New-Object -TypeName psobject
+         $detailObject | Add-Member -MemberType NoteProperty -Name Date -Value $trace.Date
+         $detailObject | Add-Member -MemberType NoteProperty -Name Event -Value $trace.Event
+         $detailObject | Add-Member -MemberType NoteProperty -Name Action -Value $trace.Action
+         $detailObject | Add-Member -MemberType NoteProperty -Name MessageId -Value $trace.MessageId
+         $detailObject | Add-Member -MemberType NoteProperty -Name MessageTraceId -Value $trace.MessageTraceId
+
+        # create XML from data
+        [System.Xml.XmlDocument]$xmlData = ''
+        $xmlData = $trace.Data
+        # get all attributes and add to custom object
+        foreach ($node in $xmlData.root.MEP)
+        {
+            $detailData | Add-Member -MemberType NoteProperty -Name $($node.get_attributes().'#text'[0]) -Value $($node.get_attributes().'#text'[1])
+        }
+
+        $detailObject | Add-Member -MemberType NoteProperty -Name Data -Value $detailData
+        $detailObject
+    }
+}
+
