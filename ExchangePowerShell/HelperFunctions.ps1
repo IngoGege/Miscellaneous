@@ -340,7 +340,7 @@ function global:Prompt
             'https://outlook.office365.com'                 {$ConnectedTo = 'EXO'}
             'https://ps.compliance.protection.outlook.com'  {$ConnectedTo = 'SCC'}
         }
-        $connectString += "Connected to $($ConnectedTo) as $($context.PowerShellCredentials.UserName) IsRpsSession:$($context.IsRpsSession) ExoModuleVersion:$($context.ExoModuleVersion)"
+        $connectString += "Connected to $($ConnectedTo) as $($context.PowerShellCredentials.UserName) IsRpsSession:$($context.IsRpsSession) ExoModuleVersion:$($context.ExoModuleVersion) RoutingHint:$($context.RoutingHint)"
     }
 
     $Host.UI.RawUI.WindowTitle = (Get-Date $([System.DateTime]::Now.ToUniversalTime()) -UFormat '%y/%m/%d %R').Tostring() + " UTC $($connectString) ProcessID:$PID Elevated:$elevated"
@@ -2731,8 +2731,7 @@ function global:Get-MSGraphUser
                                     }
 
                                 $body.requests += $passwordlessMicrosoftAuthenticatorMethods
-                                
-                                
+
                             }
 
                             $restParams = @{
@@ -7446,5 +7445,11 @@ function global:Format-MessageTraceDetail
         $detailObject | Add-Member -MemberType NoteProperty -Name Data -Value $detailData
         $detailObject
     }
+}
+
+function global:Get-MgOauth2PermissionScopesOfMG
+{
+    $resourceMG = Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0000-c000-000000000000'"
+    $resourceMG.Oauth2PermissionScopes | Sort-Object -Property Value
 }
 
