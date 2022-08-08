@@ -861,6 +861,12 @@ function global:Enable-PIMRole
             Rather specifying start and end time, a schedule of hours is used. The maximum is 10.
         .PARAMETER Reason
             The reason for elevation
+        .PARAMETER UseMG
+            Using Microsoft Graph PowerShell SDK instead of deprecated AzureADPreview module
+        .PARAMETER ListEligibleRoles
+            Lists roles, which are eligible for user to activate
+        .PARAMETER ListRoleAssignmentScheduleRequest
+            Lists all schedule resquests
         .EXAMPLE
             Enable-PIMRole -UserPrincipalName ingo@bla.com -Role 'Global Administrator'
             Enable-PIMRole -UserPrincipalName ingo@bla.com -Role 'Exchange Administrator'
@@ -869,59 +875,233 @@ function global:Enable-PIMRole
         .LINK
             https://docs.microsoft.com/azure/active-directory/privileged-identity-management/powershell-for-azure-ad-roles
     #>
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = "EnableRole")]
     Param
     (
+        [parameter(
+            ParameterSetName="EnableRole",
+            Mandatory=$true,
+            Position=0
+        )]
+        [parameter(
+            ParameterSetName="UseMgGraph",
+            Mandatory=$true,
+            Position=0
+        )]
+        [parameter(
+            ParameterSetName="ListEligibleRoles",
+            Mandatory=$true,
+            Position=0
+        )]
+        [parameter(
+            ParameterSetName="ListRoleAssignmentScheduleRequest",
+            Mandatory=$false,
+            Position=0
+        )]
         [System.String]
         $UserPrincipalName,
 
+        [parameter(
+            ParameterSetName="EnableRole",
+            Mandatory=$true,
+            Position=1
+        )]
+        [parameter(
+            ParameterSetName="UseMgGraph",
+            Mandatory=$true,
+            Position=1
+        )]
         [System.String]
         [ValidateNotNullOrEmpty()]
         [ValidateSet("Application Administrator","Application Developer","Attack Payload Author","Attack Simulation Administrator","Authentication Administrator","Azure AD Joined Device Local Administrator","Azure DevOps Administrator","Azure Information Protection Administrator","B2C IEF Keyset Administrator","B2C IEF Policy Administrator","Billing Administrator","Cloud Application Administrator","Cloud Device Administrator","Compliance Administrator","Compliance Data Administrator","Conditional Access Administrator","Customer LockBox Access Approver","Desktop Analytics Administrator","Device Join","Device Managers","Device Users","Directory Readers","Directory Synchronization Accounts","Directory Writers","Dynamics 365 Administrator","Exchange Administrator","Exchange Administrator ApplicationAccessPolicy Admin Consenters","External ID User Flow Administrator","External ID User Flow Attribute Administrator","External Identity Provider Administrator","Global Administrator","Global Reader","Groups Administrator","Guest Inviter","Guest User","Helpdesk Administrator","Hybrid Identity Administrator","Insights Administrator","Insights Business Leader","Intune Administrator","Kaizala Administrator","License Administrator","Message Center Privacy Reader","Message Center Reader","Network Administrator","Office Apps Administrator","Partner Tier1 Support","Partner Tier2 Support","Password Administrator","Power BI Administrator","Power Platform Administrator","Printer Administrator","Printer Technician","Privileged Authentication Administrator","Privileged Role Administrator","Reports Reader","Restricted Guest User","Search Administrator","Search Editor","Security Administrator","Security Operator","Security Reader","Service Support Administrator","SharePoint Administrator","Skype for Business Administrator","Teams Administrator","Teams Communications Administrator","Teams Communications Support Engineer","Teams Communications Support Specialist","Teams Devices Administrator","Usage Summary Reports Reader","User","User Administrator","Workplace Device Join")]
         $Role,
 
+        [parameter(
+            ParameterSetName="EnableRole",
+            Position=2
+        )]
+        [parameter(
+            ParameterSetName="UseMgGraph",
+            Mandatory=$true,
+            Position=2
+        )]
         [System.Int16]
         [ValidateRange(1,10)]
         $Hours = '10',
 
+        [parameter(
+            ParameterSetName="EnableRole",
+            Position=3
+        )]
+        [parameter(
+            ParameterSetName="UseMgGraph",
+            Mandatory=$true,
+            Position=3
+        )]
         [System.String]
         [ValidateNotNullOrEmpty()]
-        $Reason = 'Daily work'
+        $Reason = 'Daily work',
+
+        [parameter(
+            ParameterSetName="UseMgGraph",
+            Mandatory=$false,
+            Position=4
+        )]
+        [System.Management.Automation.SwitchParameter]
+        $UseMG,
+
+        [parameter(
+            ParameterSetName="ListEligibleRoles",
+            Mandatory=$false,
+            Position=1
+        )]
+        [System.Management.Automation.SwitchParameter]
+        $ListEligibleRoles,
+
+        [parameter(
+            ParameterSetName="ListRoleAssignmentScheduleRequest",
+            Mandatory=$false,
+            Position=1
+        )]
+        [System.Management.Automation.SwitchParameter]
+        $ListRoleAssignmentScheduleRequest
     )
 
     begin
     {
         $Error.Clear()
-        Write-Verbose 'Remove existing "old" AzureAD module and load AzureADPreview'
-        Remove-Module Azuread -Force -ErrorAction silentlycontinue
-        Import-Module AzureADPreview -Verbose:$false
+        if ($UseMG -or $ListEligibleRoles -or $ListRoleAssignmentScheduleRequest)
+        {
+            # check for required permissions
+            $requiredMGPermissions = @('User.ReadBasic.All','RoleEligibilitySchedule.Read.Directory','RoleAssignmentSchedule.ReadWrite.Directory')
+            # get current context
+            $currentMGContext = Get-MgContext
+            if (-not [System.String]::IsNullOrEmpty($currentMGContext))
+            {
+                foreach ($permission in $requiredMGPermissions)
+                {
+                    if (-not $currentMGContext.Scopes.Contains($permission))
+                    {
+                        Write-Error "Required permission missing:$($permission)"
+                        [System.Boolean]$insufficientPerms = $true
+                    }
+                }
+                if ($insufficientPerms)
+                {
+                    Write-Warning 'No existing connection. Please connect to MS Graph first! e.g.:Connect-MgGraph -Scopes User.ReadBasic.All,RoleEligibilitySchedule.Read.Directory,RoleAssignmentSchedule.ReadWrite.Directory'
+                    break
+                }
+            }
+            else
+            {
+                Import-Module Microsoft.Graph.DeviceManagement.Enrolment -Verbose:$false
+                $null = Connect-MgGraph -Scopes User.ReadBasic.All,RoleEligibilitySchedule.Read.Directory,RoleAssignmentSchedule.ReadWrite.Directory
+            }
+        }
+        else
+        {
+            Write-Verbose 'Remove existing "old" AzureAD module and load AzureADPreview'
+            Remove-Module Azuread -Force -ErrorAction silentlycontinue
+            Import-Module AzureADPreview -Verbose:$false
+        }
     }
 
     process
     {
 
         try {
-            $AAD=Connect-AzureAD -AccountId $UserPrincipalname
-            $resource = Get-AzureADMSPrivilegedResource -ProviderId AadRoles
-            $roleDefinition = Get-AzureADMSPrivilegedRoleDefinition -ProviderId AadRoles -ResourceId $resource.Id -Filter "DisplayName eq '$Role'"
-            $subject = Get-AzureADUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
-            $schedule = New-Object Microsoft.Open.MSGraph.Model.AzureADMSPrivilegedSchedule
-            $schedule.Type = "Once"
-            $schedule.Duration = "PT$($Hours)H"
+            if ($UseMG)
+            {
+                # get role
+                $roleDefinition = Get-MgRoleManagementDirectoryRoleDefinition -Filter "DisplayName eq '$Role'"
+                $subject = Get-MgUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
 
-            $MyRole = @{
-                ProviderId = 'aadRoles'
-                ResourceId = $resource.Id
-                SubjectID = $subject.ObjectId
-                AssignmentState = 'Active'
-                Type = 'UserAdd'
-                Reason =$Reason
-                RoleDefinitionId = $roleDefinition.Id
-                Schedule = $schedule
-                ErrorAction = 'Stop'
+                $body = @{
+                    action = "selfActivate"
+                    justification = "$Reason"
+                    roleDefinitionId = $roleDefinition.Id
+                    directoryScopeId = "/"
+                    principalId = $subject.Id
+                    #startDateTime = "2022-08-06 19:47:46Z"
+                    scheduleInfo = @{
+                        startDateTime = Get-Date ([System.DateTime]::UtcNow) -Format o
+                        #startDateTime = "2022-08-06T20:58:00Z"
+                        expiration = @{
+                            type = "AfterDuration"
+                            duration = "PT$($Hours)H"
+                        }
+                    }
+                }
+
+                New-MgRoleManagementDirectoryRoleAssignmentScheduleRequest -BodyParameter $body
+
             }
+            elseif ($ListEligibleRoles)
+            {
+                # initiate collection
+                $collection = [System.Collections.ArrayList]@()
+                $rawEligibleRoles = Invoke-MgGraphRequest -Method GET -Uri "v1.0/roleManagement/directory/roleEligibilitySchedules/microsoft.graph.filterByCurrentUser(on='principal')"
+                $roleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
 
-            Open-AzureADMSPrivilegedRoleAssignmentRequest @Myrole
+                foreach ($eligibleRole in $rawEligibleRoles.value)
+                {
+                    Write-Verbose "Processing role with roleDefinitionId:$($eligibleRole.roleDefinitionId)"
+                    # create role object
+                    $roleDetails = New-Object -TypeName psobject
+                    # get roleDefinition
+                    $roleDefinition = $roleDefinitions | Where-Object -FilterScript {$_.Id -EQ $eligibleRole.roleDefinitionId }
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name createdUsing -Value $eligibleRole.createdUsing
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name createdDateTime -Value $eligibleRole.createdDateTime
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name directoryScopeId -Value $eligibleRole.directoryScopeId
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name modifiedDateTime -Value $eligibleRole.modifiedDateTime
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name scheduleInfo -Value $eligibleRole.scheduleInfo
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name id -Value $eligibleRole.id
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name memberType -Value $eligibleRole.memberType
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name status -Value $eligibleRole.status
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name roleDefinitionId -Value $eligibleRole.roleDefinitionId
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name Description -Value $roleDefinition.Description
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name DisplayName -Value $roleDefinition.DisplayName
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name RolePermissions -Value $roleDefinition.RolePermissions
+
+                    # add to collection
+                    $collection += $roleDetails
+                }
+                $collection
+                
+            }
+            elseif ($ListRoleAssignmentScheduleRequest)
+            {
+                $subject = Get-MgUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
+                $paramsoleAssignmentScheduleRequest = @{
+                    Filter = "principalId eq '$($subject.Id)'"
+                    All = $true
+                }
+                Get-MgRoleManagementDirectoryRoleAssignmentScheduleRequest @paramsoleAssignmentScheduleRequest
+            }
+            else
+            {
+                $AAD=Connect-AzureAD -AccountId $UserPrincipalname
+                $resource = Get-AzureADMSPrivilegedResource -ProviderId AadRoles
+                $roleDefinition = Get-AzureADMSPrivilegedRoleDefinition -ProviderId AadRoles -ResourceId $resource.Id -Filter "DisplayName eq '$Role'"
+                $subject = Get-AzureADUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
+                $schedule = New-Object Microsoft.Open.MSGraph.Model.AzureADMSPrivilegedSchedule
+                $schedule.Type = "Once"
+                $schedule.Duration = "PT$($Hours)H"
+    
+                $MyRole = @{
+                    ProviderId = 'aadRoles'
+                    ResourceId = $resource.Id
+                    SubjectID = $subject.ObjectId
+                    AssignmentState = 'Active'
+                    Type = 'UserAdd'
+                    Reason =$Reason
+                    RoleDefinitionId = $roleDefinition.Id
+                    Schedule = $schedule
+                    ErrorAction = 'Stop'
+                }
+
+                Open-AzureADMSPrivilegedRoleAssignmentRequest @Myrole
+            }
 
         }
         catch {
@@ -6908,6 +7088,73 @@ function global:Set-Oauth2PermissionGrantforMG
             ParameterSetName='scope'
         )]
         [System.String[]]
+        [ValidateSet('AccessReview.Read.All','AccessReview.ReadWrite.All','AccessReview.ReadWrite.Membership','AdministrativeUnit.Read.All',
+        'AdministrativeUnit.ReadWrite.All','Agreement.Read.All','Agreement.ReadWrite.All','AgreementAcceptance.Read','AgreementAcceptance.Read.All',
+        'Analytics.Read','APIConnectors.Read.All','APIConnectors.ReadWrite.All','AppCatalog.Read.All','AppCatalog.ReadWrite.All','AppCatalog.Submit',
+        'Application.Read.All','Application.ReadWrite.All','AppRoleAssignment.ReadWrite.All','Approval.Read.All','Approval.ReadWrite.All',
+        'AttackSimulation.Read.All','AuditLog.Read.All','AuthenticationContext.Read.All','AuthenticationContext.ReadWrite.All','BitlockerKey.Read.All',
+        'BitlockerKey.ReadBasic.All','Bookings.Manage.All','Bookings.Read.All','Bookings.ReadWrite.All','BookingsAppointment.ReadWrite.All','Calendars.Read',
+        'Calendars.Read.Shared','Calendars.ReadWrite','Calendars.ReadWrite.Shared','Channel.Create','Channel.Delete.All','Channel.ReadBasic.All',
+        'ChannelMember.Read.All','ChannelMember.ReadWrite.All','ChannelMessage.Edit','ChannelMessage.Read.All','ChannelMessage.ReadWrite','ChannelMessage.Send',
+        'ChannelSettings.Read.All','ChannelSettings.ReadWrite.All','Chat.Create','Chat.Read','Chat.ReadBasic','Chat.ReadWrite','ChatMember.Read',
+        'ChatMember.ReadWrite','ChatMessage.Read','ChatMessage.Send','CloudPC.Read.All','CloudPC.ReadWrite.All','ConsentRequest.Read.All',
+        'ConsentRequest.ReadWrite.All','Contacts.Read','Contacts.Read.Shared','Contacts.ReadWrite','Contacts.ReadWrite.Shared','CrossTenantInformation.ReadBasic.All',
+        'CrossTenantUserProfileSharing.Read','CrossTenantUserProfileSharing.Read.All','CrossTenantUserProfileSharing.ReadWrite','CrossTenantUserProfileSharing.ReadWrite.All',
+        'CustomAuthenticationExtension.Read.All','CustomAuthenticationExtension.ReadWrite.All','CustomSecAttributeAssignment.Read.All',
+        'CustomSecAttributeAssignment.ReadWrite.All','CustomSecAttributeDefinition.Read.All','CustomSecAttributeDefinition.ReadWrite.All',
+        'DelegatedAdminRelationship.Read.All','DelegatedAdminRelationship.ReadWrite.All','DelegatedPermissionGrant.ReadWrite.All','Device.Command',
+        'Device.Read','Device.Read.All','DeviceManagementApps.Read.All','DeviceManagementApps.ReadWrite.All','DeviceManagementConfiguration.Read.All',
+        'DeviceManagementConfiguration.ReadWrite.All','DeviceManagementManagedDevices.PrivilegedOperations.All','DeviceManagementManagedDevices.Read.All',
+        'DeviceManagementManagedDevices.ReadWrite.All','DeviceManagementRBAC.Read.All','DeviceManagementRBAC.ReadWrite.All','DeviceManagementServiceConfig.Read.All',
+        'DeviceManagementServiceConfig.ReadWrite.All','Directory.AccessAsUser.All','Directory.Read.All','Directory.ReadWrite.All','Directory.Write.Restricted',
+        'DirectoryRecommendations.Read.All','DirectoryRecommendations.ReadWrite.All','Domain.Read.All','Domain.ReadWrite.All','EAS.AccessAsUser.All',
+        'eDiscovery.Read.All','eDiscovery.ReadWrite.All','EduAdministration.Read','EduAdministration.ReadWrite','EduAssignments.Read','EduAssignments.ReadBasic',
+        'EduAssignments.ReadWrite','EduAssignments.ReadWriteBasic','EduRoster.Read','EduRoster.ReadBasic','EduRoster.ReadWrite','email','EntitlementManagement.Read.All',
+        'EntitlementManagement.ReadWrite.All','EventListener.Read.All','EventListener.ReadWrite.All','EWS.AccessAsUser.All','ExternalConnection.Read.All',
+        'ExternalConnection.ReadWrite.All','ExternalConnection.ReadWrite.OwnedBy','ExternalItem.Read.All','ExternalItem.ReadWrite.All','ExternalItem.ReadWrite.OwnedBy',
+        'Family.Read','Files.Read','Files.Read.All','Files.Read.Selected','Files.ReadWrite','Files.ReadWrite.All','Files.ReadWrite.AppFolder','Files.ReadWrite.Selected',
+        'Financials.ReadWrite.All','Group.Read.All','Group.ReadWrite.All','GroupMember.Read.All','GroupMember.ReadWrite.All','IdentityProvider.Read.All',
+        'IdentityProvider.ReadWrite.All','IdentityRiskEvent.Read.All','IdentityRiskEvent.ReadWrite.All','IdentityRiskyServicePrincipal.Read.All',
+        'IdentityRiskyServicePrincipal.ReadWrite.All','IdentityRiskyUser.Read.All','IdentityRiskyUser.ReadWrite.All','IdentityUserFlow.Read.All',
+        'IdentityUserFlow.ReadWrite.All','IMAP.AccessAsUser.All','InformationProtectionPolicy.Read','LearningContent.Read.All','LearningContent.ReadWrite.All',
+        'LearningProvider.Read','LearningProvider.ReadWrite','LicenseAssignment.ReadWrite.All','Mail.Read','Mail.Read.Shared','Mail.ReadBasic','Mail.ReadWrite',
+        'Mail.ReadWrite.Shared','Mail.Send','Mail.Send.Shared','MailboxSettings.Read','MailboxSettings.ReadWrite','ManagedTenants.Read.All','ManagedTenants.ReadWrite.All',
+        'Member.Read.Hidden','Notes.Create','Notes.Read','Notes.Read.All','Notes.ReadWrite','Notes.ReadWrite.All','Notes.ReadWrite.CreatedByApp',
+        'Notifications.ReadWrite.CreatedByApp','offline_access','OnlineMeetingArtifact.Read.All','OnlineMeetingRecording.Read.All','OnlineMeetings.Read',
+        'OnlineMeetings.ReadWrite','OnlineMeetingTranscript.Read.All','OnPremisesPublishingProfiles.ReadWrite.All','openid','Organization.Read.All',
+        'Organization.ReadWrite.All','OrgContact.Read.All','People.Read','People.Read.All','Place.Read.All','Place.ReadWrite.All','Policy.Read.All',
+        'Policy.Read.ConditionalAccess','Policy.Read.PermissionGrant','Policy.ReadWrite.AccessReview','Policy.ReadWrite.ApplicationConfiguration',
+        'Policy.ReadWrite.AuthenticationFlows','Policy.ReadWrite.AuthenticationMethod','Policy.ReadWrite.Authorization','Policy.ReadWrite.ConditionalAccess',
+        'Policy.ReadWrite.ConsentRequest','Policy.ReadWrite.CrossTenantAccess','Policy.ReadWrite.DeviceConfiguration','Policy.ReadWrite.FeatureRollout',
+        'Policy.ReadWrite.MobilityManagement','Policy.ReadWrite.PermissionGrant','Policy.ReadWrite.TrustFramework','POP.AccessAsUser.All','Presence.Read',
+        'Presence.Read.All','Presence.ReadWrite','PrintConnector.Read.All','PrintConnector.ReadWrite.All','Printer.Create','Printer.FullControl.All',
+        'Printer.Read.All','Printer.ReadWrite.All','PrinterShare.Read.All','PrinterShare.ReadBasic.All','PrinterShare.ReadWrite.All','PrintJob.Create',
+        'PrintJob.Read','PrintJob.Read.All','PrintJob.ReadBasic','PrintJob.ReadBasic.All','PrintJob.ReadWrite','PrintJob.ReadWrite.All','PrintJob.ReadWriteBasic',
+        'PrintJob.ReadWriteBasic.All','PrintSettings.Read.All','PrintSettings.ReadWrite.All','PrivilegedAccess.Read.AzureAD','PrivilegedAccess.Read.AzureADGroup',
+        'PrivilegedAccess.Read.AzureResources','PrivilegedAccess.ReadWrite.AzureAD','PrivilegedAccess.ReadWrite.AzureADGroup','PrivilegedAccess.ReadWrite.AzureResources',
+        'profile','ProgramControl.Read.All','ProgramControl.ReadWrite.All','RecordsManagement.Read.All','RecordsManagement.ReadWrite.All','Reports.Read.All',
+        'ReportSettings.Read.All','ReportSettings.ReadWrite.All','RoleAssignmentSchedule.Read.Directory','RoleAssignmentSchedule.ReadWrite.Directory',
+        'RoleEligibilitySchedule.Read.Directory','RoleEligibilitySchedule.ReadWrite.Directory','RoleManagement.Read.All','RoleManagement.Read.CloudPC',
+        'RoleManagement.Read.Directory','RoleManagement.ReadWrite.CloudPC','RoleManagement.ReadWrite.Directory','RoleManagementPolicy.Read.Directory',
+        'RoleManagementPolicy.ReadWrite.Directory','Schedule.Read.All','Schedule.ReadWrite.All','SearchConfiguration.Read.All','SearchConfiguration.ReadWrite.All',
+        'SecurityActions.Read.All','SecurityActions.ReadWrite.All','SecurityAlert.Read.All','SecurityAlert.ReadWrite.All','SecurityEvents.Read.All',
+        'SecurityEvents.ReadWrite.All','SecurityIncident.Read.All','SecurityIncident.ReadWrite.All','ServiceHealth.Read.All','ServiceMessage.Read.All',
+        'ServiceMessageViewpoint.Write','ServicePrincipalEndpoint.Read.All','ServicePrincipalEndpoint.ReadWrite.All','SharePointTenantSettings.Read.All',
+        'SharePointTenantSettings.ReadWrite.All','ShortNotes.Read','ShortNotes.ReadWrite','Sites.FullControl.All','Sites.Manage.All','Sites.Read.All','Sites.ReadWrite.All',
+        'SMTP.Send','SubjectRightsRequest.Read.All','SubjectRightsRequest.ReadWrite.All','Subscription.Read.All','Tasks.Read','Tasks.Read.Shared','Tasks.ReadWrite',
+        'Tasks.ReadWrite.Shared','Team.Create','Team.ReadBasic.All','TeamMember.Read.All','TeamMember.ReadWrite.All','TeamMember.ReadWriteNonOwnerRole.All',
+        'TeamsActivity.Read','TeamsActivity.Send','TeamsAppInstallation.ReadForChat','TeamsAppInstallation.ReadForTeam','TeamsAppInstallation.ReadForUser',
+        'TeamsAppInstallation.ReadWriteForChat','TeamsAppInstallation.ReadWriteForTeam','TeamsAppInstallation.ReadWriteForUser','TeamsAppInstallation.ReadWriteSelfForChat',
+        'TeamsAppInstallation.ReadWriteSelfForTeam','TeamsAppInstallation.ReadWriteSelfForUser','TeamSettings.Read.All','TeamSettings.ReadWrite.All','TeamsTab.Create',
+        'TeamsTab.Read.All','TeamsTab.ReadWrite.All','TeamsTab.ReadWriteForChat','TeamsTab.ReadWriteForTeam','TeamsTab.ReadWriteForUser','TeamsTab.ReadWriteSelfForChat',
+        'TeamsTab.ReadWriteSelfForTeam','TeamsTab.ReadWriteSelfForUser','TeamworkDevice.Read.All','TeamworkDevice.ReadWrite.All','TeamworkTag.Read','TeamworkTag.ReadWrite',
+        'TermStore.Read.All','TermStore.ReadWrite.All','ThreatAssessment.ReadWrite.All','ThreatHunting.Read.All','ThreatIndicators.Read.All',
+        'ThreatIndicators.ReadWrite.OwnedBy','ThreatSubmission.Read','ThreatSubmission.Read.All','ThreatSubmission.ReadWrite','ThreatSubmission.ReadWrite.All',
+        'ThreatSubmissionPolicy.ReadWrite.All','TrustFrameworkKeySet.Read.All','TrustFrameworkKeySet.ReadWrite.All','UnifiedGroupMember.Read.AsGuest','User.Export.All',
+        'User.Invite.All','User.ManageIdentities.All','User.Read','User.Read.All','User.ReadBasic.All','User.ReadWrite','User.ReadWrite.All',
+        'UserActivity.ReadWrite.CreatedByApp','UserAuthenticationMethod.Read','UserAuthenticationMethod.Read.All','UserAuthenticationMethod.ReadWrite',
+        'UserAuthenticationMethod.ReadWrite.All','UserNotification.ReadWrite.CreatedByApp','UserTimelineActivity.Write.CreatedByApp','WindowsUpdates.ReadWrite.All',
+        'WorkforceIntegration.Read.All','WorkforceIntegration.ReadWrite.All')]
         $Scopes,
 
         [parameter(
