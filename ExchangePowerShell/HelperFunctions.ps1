@@ -1096,17 +1096,17 @@ function global:Enable-PIMRole
                     $roleDetails = New-Object -TypeName psobject
                     # get roleDefinition
                     $roleDefinition = $roleDefinitions | Where-Object -FilterScript {$_.Id -EQ $eligibleRole.roleDefinitionId }
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name Description -Value $roleDefinition.Description
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name DisplayName -Value $roleDefinition.DisplayName
                     $roleDetails | Add-Member -MemberType NoteProperty -Name createdUsing -Value $eligibleRole.createdUsing
-                    $roleDetails | Add-Member -MemberType NoteProperty -Name createdDateTime -Value $eligibleRole.createdDateTime
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name createdDateTimeUTC -Value $eligibleRole.createdDateTime
                     $roleDetails | Add-Member -MemberType NoteProperty -Name directoryScopeId -Value $eligibleRole.directoryScopeId
-                    $roleDetails | Add-Member -MemberType NoteProperty -Name modifiedDateTime -Value $eligibleRole.modifiedDateTime
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name modifiedDateTimeUTC -Value $eligibleRole.modifiedDateTime
                     $roleDetails | Add-Member -MemberType NoteProperty -Name scheduleInfo -Value $eligibleRole.scheduleInfo
                     $roleDetails | Add-Member -MemberType NoteProperty -Name id -Value $eligibleRole.id
                     $roleDetails | Add-Member -MemberType NoteProperty -Name memberType -Value $eligibleRole.memberType
                     $roleDetails | Add-Member -MemberType NoteProperty -Name status -Value $eligibleRole.status
                     $roleDetails | Add-Member -MemberType NoteProperty -Name roleDefinitionId -Value $eligibleRole.roleDefinitionId
-                    $roleDetails | Add-Member -MemberType NoteProperty -Name Description -Value $roleDefinition.Description
-                    $roleDetails | Add-Member -MemberType NoteProperty -Name DisplayName -Value $roleDefinition.DisplayName
                     $roleDetails | Add-Member -MemberType NoteProperty -Name RolePermissions -Value $roleDefinition.RolePermissions
 
                     # add to collection
@@ -1138,18 +1138,18 @@ function global:Enable-PIMRole
                     
                     # get roleDefinition
                     $roleDefinition = $roleDefinitions | Where-Object -FilterScript {$_.Id -EQ $activeRole.roleDefinitionId }
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name DisplayName -Value $roleDefinition.DisplayName
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name Description -Value $roleDefinition.Description
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name StartDateTimeUTC -Value $activeRole.StartDateTime
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name EndDateTimeUTC -Value $activeRole.EndDateTime
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name AssignmentType -Value $activeRole.AssignmentType
                     $activeDetails | Add-Member -MemberType NoteProperty -Name ActivatedUsing -Value $activeRole.ActivatedUsing
                     $activeDetails | Add-Member -MemberType NoteProperty -Name AppScope -Value $activeRole.AppScope
                     $activeDetails | Add-Member -MemberType NoteProperty -Name AppScopeId -Value $activeRole.AppScopeId
-                    $activeDetails | Add-Member -MemberType NoteProperty -Name AssignmentType -Value $activeRole.AssignmentType
                     $activeDetails | Add-Member -MemberType NoteProperty -Name DirectoryScope -Value $activeRole.DirectoryScope
                     $activeDetails | Add-Member -MemberType NoteProperty -Name DirectoryScopeId -Value $activeRole.DirectoryScopeId
-                    $activeDetails | Add-Member -MemberType NoteProperty -Name StartDateTime -Value $activeRole.StartDateTime
-                    $activeDetails | Add-Member -MemberType NoteProperty -Name EndDateTime -Value $activeRole.EndDateTime
                     $activeDetails | Add-Member -MemberType NoteProperty -Name PrincipalId -Value $activeRole.PrincipalId
                     $activeDetails | Add-Member -MemberType NoteProperty -Name RoleDefinitionId -Value $activeRole.RoleDefinitionId
-                    $activeDetails | Add-Member -MemberType NoteProperty -Name Description -Value $roleDefinition.Description
-                    $activeDetails | Add-Member -MemberType NoteProperty -Name DisplayName -Value $roleDefinition.DisplayName
                     $activeDetails | Add-Member -MemberType NoteProperty -Name RolePermissions -Value $roleDefinition.RolePermissions
 
                     # add to collection
