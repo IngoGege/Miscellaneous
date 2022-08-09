@@ -872,9 +872,23 @@ function global:Enable-PIMRole
         .EXAMPLE
             Enable-PIMRole -UserPrincipalName ingo@bla.com -Role 'Global Administrator'
             Enable-PIMRole -UserPrincipalName ingo@bla.com -Role 'Exchange Administrator'
+            Enable specific role
+        .EXAMPLE
+            Enable-PIMRole -UserPrincipalName ingo@bla.com -ListActiveRoles
+            List all active roles
+        .EXAMPLE
+            Enable-PIMRole -UserPrincipalName ingo@bla.com -ListEligibleRoles
+            List all eligible roles
+        .EXAMPLE
+            Enable-PIMRole -UserPrincipalName ingo@bla.com -ListRoleAssignmentScheduleRequest
+            List all RoleAssignmentScheduleRequest
+        .EXAMPLE
+            Enable-PIMRole -UserPrincipalName ingo@bla.com -Role 'Global Administrator' -UseAzureADPreview
+            Use deprecated AzureADPreview module. Only available for activating a role
         .NOTES
-            The function and the new PIM module requires the latest AzureADPreview module as AzureAD module doesn't support the new PIM requests.
+            The function and the new PIM module requires the latest AzureADPreview module as AzureAD module doesn't support the new PIM requests. By default it uses Microsoft Graph PowerShell SDK module. Make sure you have the right scopes!
         .LINK
+            https://docs.microsoft.com/graph/api/resources/privilegedidentitymanagementv3-overview?view=graph-rest-1.0
             https://docs.microsoft.com/azure/active-directory/privileged-identity-management/powershell-for-azure-ad-roles
     #>
     [CmdletBinding(DefaultParameterSetName = "EnableRole")]
@@ -910,11 +924,11 @@ function global:Enable-PIMRole
 
         [parameter(
             ParameterSetName="EnableRole",
-            Position=2
+            Position=1
         )]
         [parameter(
             ParameterSetName="UseAzureADPreview",
-            Position=2
+            Position=1
         )]
         [System.Int16]
         [ValidateRange(1,10)]
@@ -922,11 +936,11 @@ function global:Enable-PIMRole
 
         [parameter(
             ParameterSetName="EnableRole",
-            Position=3
+            Position=2
         )]
         [parameter(
             ParameterSetName="UseAzureADPreview",
-            Position=3
+            Position=2
         )]
         [System.String]
         [ValidateNotNullOrEmpty()]
@@ -959,7 +973,7 @@ function global:Enable-PIMRole
         [parameter(
             ParameterSetName="UseAzureADPreview",
             Mandatory=$false,
-            Position=4
+            Position=3
         )]
         [System.Management.Automation.SwitchParameter]
         $UseAzureADPreview
