@@ -861,12 +861,14 @@ function global:Enable-PIMRole
             Rather specifying start and end time, a schedule of hours is used. The maximum is 10.
         .PARAMETER Reason
             The reason for elevation
-        .PARAMETER UseMG
-            Using Microsoft Graph PowerShell SDK instead of deprecated AzureADPreview module
+        .PARAMETER ListActiveRoles
+            Lists all active roles
         .PARAMETER ListEligibleRoles
             Lists roles, which are eligible for user to activate
         .PARAMETER ListRoleAssignmentScheduleRequest
             Lists all schedule resquests
+        .PARAMETER UseAzureADPreview
+            Using deprecated AzureADPreview module
         .EXAMPLE
             Enable-PIMRole -UserPrincipalName ingo@bla.com -Role 'Global Administrator'
             Enable-PIMRole -UserPrincipalName ingo@bla.com -Role 'Exchange Administrator'
@@ -884,7 +886,7 @@ function global:Enable-PIMRole
             Position=0
         )]
         [parameter(
-            ParameterSetName="UseMgGraph",
+            ParameterSetName="UseAzureADPreview",
             Mandatory=$true,
             Position=0
         )]
@@ -898,31 +900,20 @@ function global:Enable-PIMRole
             Mandatory=$false,
             Position=0
         )]
+        [parameter(
+            ParameterSetName="ListActiveRoles",
+            Mandatory=$false,
+            Position=0
+        )]
         [System.String]
         $UserPrincipalName,
-
-        [parameter(
-            ParameterSetName="EnableRole",
-            Mandatory=$true,
-            Position=1
-        )]
-        [parameter(
-            ParameterSetName="UseMgGraph",
-            Mandatory=$true,
-            Position=1
-        )]
-        [System.String]
-        [ValidateNotNullOrEmpty()]
-        [ValidateSet("Application Administrator","Application Developer","Attack Payload Author","Attack Simulation Administrator","Authentication Administrator","Azure AD Joined Device Local Administrator","Azure DevOps Administrator","Azure Information Protection Administrator","B2C IEF Keyset Administrator","B2C IEF Policy Administrator","Billing Administrator","Cloud Application Administrator","Cloud Device Administrator","Compliance Administrator","Compliance Data Administrator","Conditional Access Administrator","Customer LockBox Access Approver","Desktop Analytics Administrator","Device Join","Device Managers","Device Users","Directory Readers","Directory Synchronization Accounts","Directory Writers","Dynamics 365 Administrator","Exchange Administrator","Exchange Administrator ApplicationAccessPolicy Admin Consenters","External ID User Flow Administrator","External ID User Flow Attribute Administrator","External Identity Provider Administrator","Global Administrator","Global Reader","Groups Administrator","Guest Inviter","Guest User","Helpdesk Administrator","Hybrid Identity Administrator","Insights Administrator","Insights Business Leader","Intune Administrator","Kaizala Administrator","License Administrator","Message Center Privacy Reader","Message Center Reader","Network Administrator","Office Apps Administrator","Partner Tier1 Support","Partner Tier2 Support","Password Administrator","Power BI Administrator","Power Platform Administrator","Printer Administrator","Printer Technician","Privileged Authentication Administrator","Privileged Role Administrator","Reports Reader","Restricted Guest User","Search Administrator","Search Editor","Security Administrator","Security Operator","Security Reader","Service Support Administrator","SharePoint Administrator","Skype for Business Administrator","Teams Administrator","Teams Communications Administrator","Teams Communications Support Engineer","Teams Communications Support Specialist","Teams Devices Administrator","Usage Summary Reports Reader","User","User Administrator","Workplace Device Join")]
-        $Role,
 
         [parameter(
             ParameterSetName="EnableRole",
             Position=2
         )]
         [parameter(
-            ParameterSetName="UseMgGraph",
-            Mandatory=$true,
+            ParameterSetName="UseAzureADPreview",
             Position=2
         )]
         [System.Int16]
@@ -934,8 +925,7 @@ function global:Enable-PIMRole
             Position=3
         )]
         [parameter(
-            ParameterSetName="UseMgGraph",
-            Mandatory=$true,
+            ParameterSetName="UseAzureADPreview",
             Position=3
         )]
         [System.String]
@@ -943,12 +933,12 @@ function global:Enable-PIMRole
         $Reason = 'Daily work',
 
         [parameter(
-            ParameterSetName="UseMgGraph",
+            ParameterSetName="ListActiveRoles",
             Mandatory=$false,
-            Position=4
+            Position=1
         )]
         [System.Management.Automation.SwitchParameter]
-        $UseMG,
+        $ListActiveRoles,
 
         [parameter(
             ParameterSetName="ListEligibleRoles",
@@ -964,13 +954,45 @@ function global:Enable-PIMRole
             Position=1
         )]
         [System.Management.Automation.SwitchParameter]
-        $ListRoleAssignmentScheduleRequest
-    )
+        $ListRoleAssignmentScheduleRequest,
 
-    begin
+        [parameter(
+            ParameterSetName="UseAzureADPreview",
+            Mandatory=$false,
+            Position=4
+        )]
+        [System.Management.Automation.SwitchParameter]
+        $UseAzureADPreview
+    )
+    
+    DynamicParam
     {
-        $Error.Clear()
-        if ($UseMG -or $ListEligibleRoles -or $ListRoleAssignmentScheduleRequest)
+        $paramDictionary = New-Object -Type System.Management.Automation.RuntimeDefinedParameterDictionary
+        $attributeEnableRole = New-Object System.Management.Automation.ParameterAttribute
+        $attributeEnableRole.ParameterSetName = 'EnableRole'
+        $attributeEnableRole.Position = '1'
+        $attributeEnableRole.Mandatory = $true
+
+        $attributeUseAzureADPreview = New-Object System.Management.Automation.ParameterAttribute
+        $attributeUseAzureADPreview.ParameterSetName = 'UseAzureADPreview'
+        $attributeUseAzureADPreview.Position = '1'
+        $attributeUseAzureADPreview.Mandatory = $true
+
+        $attributeCollection = New-Object -Type System.Collections.ObjectModel.Collection[System.Attribute]
+        $attributeCollection.Add($attributeEnableRole)
+        $attributeCollection.Add($attributeUseAzureADPreview)
+
+        if ($UseAzureADPreview)
+        {
+            Write-Verbose 'Remove existing "old" AzureAD module and load AzureADPreview'
+            Remove-Module Azuread -Force -ErrorAction silentlycontinue
+            Import-Module AzureADPreview -Verbose:$false
+            $AAD = Connect-AzureAD -AccountId $UserPrincipalname
+            $resource = Get-AzureADMSPrivilegedResource -ProviderId AadRoles
+            $script:allRoles = Get-AzureADMSPrivilegedRoleDefinition -ProviderId AadRoles -ResourceId $resource.Id
+            $roleSet = $allRoles.DisplayName
+        }
+        else
         {
             # check for required permissions
             $requiredMGPermissions = @('User.ReadBasic.All','RoleEligibilitySchedule.Read.Directory','RoleAssignmentSchedule.ReadWrite.Directory')
@@ -997,43 +1019,53 @@ function global:Enable-PIMRole
                 Import-Module Microsoft.Graph.DeviceManagement.Enrolment -Verbose:$false
                 $null = Connect-MgGraph -Scopes User.ReadBasic.All,RoleEligibilitySchedule.Read.Directory,RoleAssignmentSchedule.ReadWrite.Directory
             }
+
+            # Generate and set the ValidateSet
+            #$roleSet = (Get-MgRoleManagementDirectoryRoleDefinition -All).DisplayName
+            $script:allRoles = Get-MgRoleManagementDirectoryRoleDefinition -All
+            $roleSet = $allRoles.DisplayName
         }
-        else
-        {
-            Write-Verbose 'Remove existing "old" AzureAD module and load AzureADPreview'
-            Remove-Module Azuread -Force -ErrorAction silentlycontinue
-            Import-Module AzureADPreview -Verbose:$false
-        }
+        $validateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($roleSet)
+        $attributeCollection.Add($validateSetAttribute)
+        
+        $runtimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter('Role', [string], $attributeCollection)
+        $paramDictionary.Add('Role', $runtimeParameter)
+        return $paramDictionary
+
+    }
+
+    begin
+    {
+        $Error.Clear()
     }
 
     process
     {
 
         try {
-            if ($UseMG)
+            if ($UseAzureADPreview)
             {
-                # get role
-                $roleDefinition = Get-MgRoleManagementDirectoryRoleDefinition -Filter "DisplayName eq '$Role'"
-                $subject = Get-MgUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
-
-                $body = @{
-                    action = "selfActivate"
-                    justification = "$Reason"
-                    roleDefinitionId = $roleDefinition.Id
-                    directoryScopeId = "/"
-                    principalId = $subject.Id
-                    #startDateTime = "2022-08-06 19:47:46Z"
-                    scheduleInfo = @{
-                        startDateTime = Get-Date ([System.DateTime]::UtcNow) -Format o
-                        #startDateTime = "2022-08-06T20:58:00Z"
-                        expiration = @{
-                            type = "AfterDuration"
-                            duration = "PT$($Hours)H"
-                        }
-                    }
+                $AAD=Connect-AzureAD -AccountId $UserPrincipalname
+                $resource = Get-AzureADMSPrivilegedResource -ProviderId AadRoles
+                $roleDefinition = $script:allRoles | Where-Object -FilterScript {$_.DisplayName -eq $PSBoundParameters.Role}
+                $subject = Get-AzureADUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
+                $schedule = New-Object Microsoft.Open.MSGraph.Model.AzureADMSPrivilegedSchedule
+                $schedule.Type = "Once"
+                $schedule.Duration = "PT$($Hours)H"
+    
+                $MyRole = @{
+                    ProviderId = 'aadRoles'
+                    ResourceId = $resource.Id
+                    SubjectID = $subject.ObjectId
+                    AssignmentState = 'Active'
+                    Type = 'UserAdd'
+                    Reason =$Reason
+                    RoleDefinitionId = $roleDefinition.Id
+                    Schedule = $schedule
+                    ErrorAction = 'Stop'
                 }
 
-                New-MgRoleManagementDirectoryRoleAssignmentScheduleRequest -BodyParameter $body
+                Open-AzureADMSPrivilegedRoleAssignmentRequest @Myrole
 
             }
             elseif ($ListEligibleRoles)
@@ -1067,7 +1099,6 @@ function global:Enable-PIMRole
                     $collection += $roleDetails
                 }
                 $collection
-                
             }
             elseif ($ListRoleAssignmentScheduleRequest)
             {
@@ -1078,31 +1109,64 @@ function global:Enable-PIMRole
                 }
                 Get-MgRoleManagementDirectoryRoleAssignmentScheduleRequest @paramsoleAssignmentScheduleRequest
             }
+            elseif ($ListActiveRoles)
+            {
+                # initiate collection
+                $collection = [System.Collections.ArrayList]@()
+                $subject = Get-MgUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
+                $rawActiveRoles = Get-MgRoleManagementDirectoryRoleAssignmentScheduleInstance -Filter "principalId eq '$($subject.Id)'" -ExpandProperty activatedUsing
+                $roleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
+
+                foreach ($activeRole in $rawActiveRoles)
+                {
+                    # create role object
+                    $activeDetails = New-Object -TypeName psobject
+                    
+                    # get roleDefinition
+                    $roleDefinition = $roleDefinitions | Where-Object -FilterScript {$_.Id -EQ $activeRole.roleDefinitionId }
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name ActivatedUsing -Value $activeRole.ActivatedUsing
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name AppScope -Value $activeRole.AppScope
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name AppScopeId -Value $activeRole.AppScopeId
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name AssignmentType -Value $activeRole.AssignmentType
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name DirectoryScope -Value $activeRole.DirectoryScope
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name DirectoryScopeId -Value $activeRole.DirectoryScopeId
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name StartDateTime -Value $activeRole.StartDateTime
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name EndDateTime -Value $activeRole.EndDateTime
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name PrincipalId -Value $activeRole.PrincipalId
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name RoleDefinitionId -Value $activeRole.RoleDefinitionId
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name Description -Value $roleDefinition.Description
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name DisplayName -Value $roleDefinition.DisplayName
+                    $activeDetails | Add-Member -MemberType NoteProperty -Name RolePermissions -Value $roleDefinition.RolePermissions
+
+                    # add to collection
+                    $collection += $activeDetails
+                }
+                $collection
+            }
             else
             {
-                $AAD=Connect-AzureAD -AccountId $UserPrincipalname
-                $resource = Get-AzureADMSPrivilegedResource -ProviderId AadRoles
-                $roleDefinition = Get-AzureADMSPrivilegedRoleDefinition -ProviderId AadRoles -ResourceId $resource.Id -Filter "DisplayName eq '$Role'"
-                $subject = Get-AzureADUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
-                $schedule = New-Object Microsoft.Open.MSGraph.Model.AzureADMSPrivilegedSchedule
-                $schedule.Type = "Once"
-                $schedule.Duration = "PT$($Hours)H"
-    
-                $MyRole = @{
-                    ProviderId = 'aadRoles'
-                    ResourceId = $resource.Id
-                    SubjectID = $subject.ObjectId
-                    AssignmentState = 'Active'
-                    Type = 'UserAdd'
-                    Reason =$Reason
-                    RoleDefinitionId = $roleDefinition.Id
-                    Schedule = $schedule
-                    ErrorAction = 'Stop'
+                # get role
+                $roleDefinition = $script:allRoles | Where-Object -FilterScript {$_.DisplayName -eq $PSBoundParameters.Role}
+                $subject = Get-MgUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
+
+                $body = @{
+                    action = "selfActivate"
+                    justification = "$Reason"
+                    roleDefinitionId = $roleDefinition.Id
+                    directoryScopeId = "/"
+                    principalId = $subject.Id
+                    #startDateTime = "2022-08-06 19:47:46Z"
+                    scheduleInfo = @{
+                        startDateTime = Get-Date ([System.DateTime]::UtcNow) -Format o
+                        #startDateTime = "2022-08-06T20:58:00Z"
+                        expiration = @{
+                            type = "AfterDuration"
+                            duration = "PT$($Hours)H"
+                        }
+                    }
                 }
-
-                Open-AzureADMSPrivilegedRoleAssignmentRequest @Myrole
+                New-MgRoleManagementDirectoryRoleAssignmentScheduleRequest -BodyParameter $body
             }
-
         }
         catch {
             $Error[0].Exception
