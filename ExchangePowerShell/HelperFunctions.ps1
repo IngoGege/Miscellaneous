@@ -1086,10 +1086,12 @@ function global:Enable-PIMRole
             {
                 # initiate collection
                 $collection = [System.Collections.ArrayList]@()
-                $rawEligibleRoles = Invoke-MgGraphRequest -Method GET -Uri "v1.0/roleManagement/directory/roleEligibilitySchedules/microsoft.graph.filterByCurrentUser(on='principal')"
+                #$rawEligibleRoles = Invoke-MgGraphRequest -Method GET -Uri "v1.0/roleManagement/directory/roleEligibilitySchedules/microsoft.graph.filterByCurrentUser(on='principal')"
+                $subject = Get-MgUser -Filter "userPrincipalName eq '$($UserPrincipalname)'"
+                $rawEligibleRoles =  Get-MgRoleManagementDirectoryRoleEligibilitySchedule -Filter "PrincipalId eq '$($subject.Id)'"
                 $roleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
 
-                foreach ($eligibleRole in $rawEligibleRoles.value)
+                foreach ($eligibleRole in $rawEligibleRoles)
                 {
                     Write-Verbose "Processing role with roleDefinitionId:$($eligibleRole.roleDefinitionId)"
                     # create role object
@@ -1108,6 +1110,7 @@ function global:Enable-PIMRole
                     $roleDetails | Add-Member -MemberType NoteProperty -Name status -Value $eligibleRole.status
                     $roleDetails | Add-Member -MemberType NoteProperty -Name roleDefinitionId -Value $eligibleRole.roleDefinitionId
                     $roleDetails | Add-Member -MemberType NoteProperty -Name RolePermissions -Value $roleDefinition.RolePermissions
+                    $roleDetails | Add-Member -MemberType NoteProperty -Name UserPrincipalname -Value $UserPrincipalname
 
                     # add to collection
                     $collection += $roleDetails
