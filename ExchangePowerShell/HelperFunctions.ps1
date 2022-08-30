@@ -978,7 +978,7 @@ function global:Enable-PIMRole
         [System.Management.Automation.SwitchParameter]
         $UseAzureADPreview
     )
-    
+
     DynamicParam
     {
         $paramDictionary = New-Object -Type System.Management.Automation.RuntimeDefinedParameterDictionary
@@ -1009,7 +1009,7 @@ function global:Enable-PIMRole
         else
         {
             # check for required permissions
-            $requiredMGPermissions = @('User.ReadBasic.All','RoleEligibilitySchedule.Read.Directory','RoleAssignmentSchedule.ReadWrite.Directory')
+            $requiredMGPermissions = @('User.ReadBasic.All','RoleEligibilitySchedule.Read.Directory','RoleAssignmentSchedule.ReadWrite.Directory','RoleManagement.Read.Directory')
             # get current context
             $currentMGContext = Get-MgContext
             if (-not [System.String]::IsNullOrEmpty($currentMGContext))
@@ -1024,14 +1024,14 @@ function global:Enable-PIMRole
                 }
                 if ($insufficientPerms)
                 {
-                    Write-Warning 'No existing connection. Please connect to MS Graph first! e.g.:Connect-MgGraph -Scopes User.ReadBasic.All,RoleEligibilitySchedule.Read.Directory,RoleAssignmentSchedule.ReadWrite.Directory'
+                    Write-Warning 'No existing connection. Please connect to MS Graph first! e.g.:Connect-MgGraph -Scopes User.ReadBasic.All,RoleEligibilitySchedule.Read.Directory,RoleAssignmentSchedule.ReadWrite.Directory,RoleManagement.Read.Directory'
                     break
                 }
             }
             else
             {
                 Import-Module Microsoft.Graph.DeviceManagement.Enrolment -Verbose:$false
-                $null = Connect-MgGraph -Scopes User.ReadBasic.All,RoleEligibilitySchedule.Read.Directory,RoleAssignmentSchedule.ReadWrite.Directory
+                $null = Connect-MgGraph -Scopes User.ReadBasic.All,RoleEligibilitySchedule.Read.Directory,RoleAssignmentSchedule.ReadWrite.Directory,RoleManagement.Read.Directory
             }
 
             # Generate and set the ValidateSet
@@ -1041,7 +1041,7 @@ function global:Enable-PIMRole
         }
         $validateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($roleSet)
         $attributeCollection.Add($validateSetAttribute)
-        
+
         $runtimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter('Role', [string], $attributeCollection)
         $paramDictionary.Add('Role', $runtimeParameter)
         return $paramDictionary
