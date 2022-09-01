@@ -1030,7 +1030,7 @@ function global:Enable-PIMRole
             }
             else
             {
-                Import-Module Microsoft.Graph.DeviceManagement.Enrolment -Verbose:$false
+                Write-Host -ForegroundColor Yellow 'Connecting to MgGraph...'
                 $null = Connect-MgGraph -Scopes User.ReadBasic.All,RoleEligibilitySchedule.Read.Directory,RoleAssignmentSchedule.ReadWrite.Directory,RoleManagement.Read.Directory
             }
 
@@ -7133,6 +7133,8 @@ function global:Set-Oauth2PermissionGrantforMG
             This parameter Scopes defines comma seperated scopes you want to grant.
         .PARAMETER RemoveAllGrants
             The parameter RemoveAllGrants removes all consent for give user.
+        .PARAMETER AddScope
+            The parameter AddScope reads existing grants and adds missing scopes instead of replacing existing ones.
         .EXAMPLE
             # create Oauth2PermissionGrant for John Doe to read and write Intune configuration on the service principal 919c3642-68e5-43a1-b427-38e44fce5d4f
             Set-Oauth2PermissionGrantforMG -User john.doe@contoso.com -Verbose -ObjectID 919c3642-68e5-43a1-b427-38e44fce5d4f -Scopes DeviceManagementServiceConfig.ReadWrite.All
@@ -7147,18 +7149,30 @@ function global:Set-Oauth2PermissionGrantforMG
         .LINK
             https://docs.microsoft.com/en-us/azure/active-directory/manage-apps/grant-consent-single-user
     #>
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'scope')]
     param(
         [parameter(
             Mandatory=$true,
-            Position=0
+            Position=0,
+            ParameterSetName='scope'
+        )]
+        [parameter(
+            Mandatory=$true,
+            Position=0,
+            ParameterSetName='cleanup'
         )]
         [System.String]
         $ObjectID,
 
         [parameter(
             Mandatory=$true,
-            Position=1
+            Position=1,
+            ParameterSetName='scope'
+        )]
+        [parameter(
+            Mandatory=$true,
+            Position=1,
+            ParameterSetName='cleanup'
         )]
         [System.String[]]
         $User,
@@ -7166,86 +7180,68 @@ function global:Set-Oauth2PermissionGrantforMG
         [parameter(
             Mandatory=$false,
             Position=2,
-            ParameterSetName='scope'
+            ParameterSetName='cleanup'
         )]
-        [System.String[]]
-        [ValidateSet('AccessReview.Read.All','AccessReview.ReadWrite.All','AccessReview.ReadWrite.Membership','AdministrativeUnit.Read.All',
-        'AdministrativeUnit.ReadWrite.All','Agreement.Read.All','Agreement.ReadWrite.All','AgreementAcceptance.Read','AgreementAcceptance.Read.All',
-        'Analytics.Read','APIConnectors.Read.All','APIConnectors.ReadWrite.All','AppCatalog.Read.All','AppCatalog.ReadWrite.All','AppCatalog.Submit',
-        'Application.Read.All','Application.ReadWrite.All','AppRoleAssignment.ReadWrite.All','Approval.Read.All','Approval.ReadWrite.All',
-        'AttackSimulation.Read.All','AuditLog.Read.All','AuthenticationContext.Read.All','AuthenticationContext.ReadWrite.All','BitlockerKey.Read.All',
-        'BitlockerKey.ReadBasic.All','Bookings.Manage.All','Bookings.Read.All','Bookings.ReadWrite.All','BookingsAppointment.ReadWrite.All','Calendars.Read',
-        'Calendars.Read.Shared','Calendars.ReadWrite','Calendars.ReadWrite.Shared','Channel.Create','Channel.Delete.All','Channel.ReadBasic.All',
-        'ChannelMember.Read.All','ChannelMember.ReadWrite.All','ChannelMessage.Edit','ChannelMessage.Read.All','ChannelMessage.ReadWrite','ChannelMessage.Send',
-        'ChannelSettings.Read.All','ChannelSettings.ReadWrite.All','Chat.Create','Chat.Read','Chat.ReadBasic','Chat.ReadWrite','ChatMember.Read',
-        'ChatMember.ReadWrite','ChatMessage.Read','ChatMessage.Send','CloudPC.Read.All','CloudPC.ReadWrite.All','ConsentRequest.Read.All',
-        'ConsentRequest.ReadWrite.All','Contacts.Read','Contacts.Read.Shared','Contacts.ReadWrite','Contacts.ReadWrite.Shared','CrossTenantInformation.ReadBasic.All',
-        'CrossTenantUserProfileSharing.Read','CrossTenantUserProfileSharing.Read.All','CrossTenantUserProfileSharing.ReadWrite','CrossTenantUserProfileSharing.ReadWrite.All',
-        'CustomAuthenticationExtension.Read.All','CustomAuthenticationExtension.ReadWrite.All','CustomSecAttributeAssignment.Read.All',
-        'CustomSecAttributeAssignment.ReadWrite.All','CustomSecAttributeDefinition.Read.All','CustomSecAttributeDefinition.ReadWrite.All',
-        'DelegatedAdminRelationship.Read.All','DelegatedAdminRelationship.ReadWrite.All','DelegatedPermissionGrant.ReadWrite.All','Device.Command',
-        'Device.Read','Device.Read.All','DeviceManagementApps.Read.All','DeviceManagementApps.ReadWrite.All','DeviceManagementConfiguration.Read.All',
-        'DeviceManagementConfiguration.ReadWrite.All','DeviceManagementManagedDevices.PrivilegedOperations.All','DeviceManagementManagedDevices.Read.All',
-        'DeviceManagementManagedDevices.ReadWrite.All','DeviceManagementRBAC.Read.All','DeviceManagementRBAC.ReadWrite.All','DeviceManagementServiceConfig.Read.All',
-        'DeviceManagementServiceConfig.ReadWrite.All','Directory.AccessAsUser.All','Directory.Read.All','Directory.ReadWrite.All','Directory.Write.Restricted',
-        'DirectoryRecommendations.Read.All','DirectoryRecommendations.ReadWrite.All','Domain.Read.All','Domain.ReadWrite.All','EAS.AccessAsUser.All',
-        'eDiscovery.Read.All','eDiscovery.ReadWrite.All','EduAdministration.Read','EduAdministration.ReadWrite','EduAssignments.Read','EduAssignments.ReadBasic',
-        'EduAssignments.ReadWrite','EduAssignments.ReadWriteBasic','EduRoster.Read','EduRoster.ReadBasic','EduRoster.ReadWrite','email','EntitlementManagement.Read.All',
-        'EntitlementManagement.ReadWrite.All','EventListener.Read.All','EventListener.ReadWrite.All','EWS.AccessAsUser.All','ExternalConnection.Read.All',
-        'ExternalConnection.ReadWrite.All','ExternalConnection.ReadWrite.OwnedBy','ExternalItem.Read.All','ExternalItem.ReadWrite.All','ExternalItem.ReadWrite.OwnedBy',
-        'Family.Read','Files.Read','Files.Read.All','Files.Read.Selected','Files.ReadWrite','Files.ReadWrite.All','Files.ReadWrite.AppFolder','Files.ReadWrite.Selected',
-        'Financials.ReadWrite.All','Group.Read.All','Group.ReadWrite.All','GroupMember.Read.All','GroupMember.ReadWrite.All','IdentityProvider.Read.All',
-        'IdentityProvider.ReadWrite.All','IdentityRiskEvent.Read.All','IdentityRiskEvent.ReadWrite.All','IdentityRiskyServicePrincipal.Read.All',
-        'IdentityRiskyServicePrincipal.ReadWrite.All','IdentityRiskyUser.Read.All','IdentityRiskyUser.ReadWrite.All','IdentityUserFlow.Read.All',
-        'IdentityUserFlow.ReadWrite.All','IMAP.AccessAsUser.All','InformationProtectionPolicy.Read','LearningContent.Read.All','LearningContent.ReadWrite.All',
-        'LearningProvider.Read','LearningProvider.ReadWrite','LicenseAssignment.ReadWrite.All','Mail.Read','Mail.Read.Shared','Mail.ReadBasic','Mail.ReadWrite',
-        'Mail.ReadWrite.Shared','Mail.Send','Mail.Send.Shared','MailboxSettings.Read','MailboxSettings.ReadWrite','ManagedTenants.Read.All','ManagedTenants.ReadWrite.All',
-        'Member.Read.Hidden','Notes.Create','Notes.Read','Notes.Read.All','Notes.ReadWrite','Notes.ReadWrite.All','Notes.ReadWrite.CreatedByApp',
-        'Notifications.ReadWrite.CreatedByApp','offline_access','OnlineMeetingArtifact.Read.All','OnlineMeetingRecording.Read.All','OnlineMeetings.Read',
-        'OnlineMeetings.ReadWrite','OnlineMeetingTranscript.Read.All','OnPremisesPublishingProfiles.ReadWrite.All','openid','Organization.Read.All',
-        'Organization.ReadWrite.All','OrgContact.Read.All','People.Read','People.Read.All','Place.Read.All','Place.ReadWrite.All','Policy.Read.All',
-        'Policy.Read.ConditionalAccess','Policy.Read.PermissionGrant','Policy.ReadWrite.AccessReview','Policy.ReadWrite.ApplicationConfiguration',
-        'Policy.ReadWrite.AuthenticationFlows','Policy.ReadWrite.AuthenticationMethod','Policy.ReadWrite.Authorization','Policy.ReadWrite.ConditionalAccess',
-        'Policy.ReadWrite.ConsentRequest','Policy.ReadWrite.CrossTenantAccess','Policy.ReadWrite.DeviceConfiguration','Policy.ReadWrite.FeatureRollout',
-        'Policy.ReadWrite.MobilityManagement','Policy.ReadWrite.PermissionGrant','Policy.ReadWrite.TrustFramework','POP.AccessAsUser.All','Presence.Read',
-        'Presence.Read.All','Presence.ReadWrite','PrintConnector.Read.All','PrintConnector.ReadWrite.All','Printer.Create','Printer.FullControl.All',
-        'Printer.Read.All','Printer.ReadWrite.All','PrinterShare.Read.All','PrinterShare.ReadBasic.All','PrinterShare.ReadWrite.All','PrintJob.Create',
-        'PrintJob.Read','PrintJob.Read.All','PrintJob.ReadBasic','PrintJob.ReadBasic.All','PrintJob.ReadWrite','PrintJob.ReadWrite.All','PrintJob.ReadWriteBasic',
-        'PrintJob.ReadWriteBasic.All','PrintSettings.Read.All','PrintSettings.ReadWrite.All','PrivilegedAccess.Read.AzureAD','PrivilegedAccess.Read.AzureADGroup',
-        'PrivilegedAccess.Read.AzureResources','PrivilegedAccess.ReadWrite.AzureAD','PrivilegedAccess.ReadWrite.AzureADGroup','PrivilegedAccess.ReadWrite.AzureResources',
-        'profile','ProgramControl.Read.All','ProgramControl.ReadWrite.All','RecordsManagement.Read.All','RecordsManagement.ReadWrite.All','Reports.Read.All',
-        'ReportSettings.Read.All','ReportSettings.ReadWrite.All','RoleAssignmentSchedule.Read.Directory','RoleAssignmentSchedule.ReadWrite.Directory',
-        'RoleEligibilitySchedule.Read.Directory','RoleEligibilitySchedule.ReadWrite.Directory','RoleManagement.Read.All','RoleManagement.Read.CloudPC',
-        'RoleManagement.Read.Directory','RoleManagement.ReadWrite.CloudPC','RoleManagement.ReadWrite.Directory','RoleManagementPolicy.Read.Directory',
-        'RoleManagementPolicy.ReadWrite.Directory','Schedule.Read.All','Schedule.ReadWrite.All','SearchConfiguration.Read.All','SearchConfiguration.ReadWrite.All',
-        'SecurityActions.Read.All','SecurityActions.ReadWrite.All','SecurityAlert.Read.All','SecurityAlert.ReadWrite.All','SecurityEvents.Read.All',
-        'SecurityEvents.ReadWrite.All','SecurityIncident.Read.All','SecurityIncident.ReadWrite.All','ServiceHealth.Read.All','ServiceMessage.Read.All',
-        'ServiceMessageViewpoint.Write','ServicePrincipalEndpoint.Read.All','ServicePrincipalEndpoint.ReadWrite.All','SharePointTenantSettings.Read.All',
-        'SharePointTenantSettings.ReadWrite.All','ShortNotes.Read','ShortNotes.ReadWrite','Sites.FullControl.All','Sites.Manage.All','Sites.Read.All','Sites.ReadWrite.All',
-        'SMTP.Send','SubjectRightsRequest.Read.All','SubjectRightsRequest.ReadWrite.All','Subscription.Read.All','Tasks.Read','Tasks.Read.Shared','Tasks.ReadWrite',
-        'Tasks.ReadWrite.Shared','Team.Create','Team.ReadBasic.All','TeamMember.Read.All','TeamMember.ReadWrite.All','TeamMember.ReadWriteNonOwnerRole.All',
-        'TeamsActivity.Read','TeamsActivity.Send','TeamsAppInstallation.ReadForChat','TeamsAppInstallation.ReadForTeam','TeamsAppInstallation.ReadForUser',
-        'TeamsAppInstallation.ReadWriteForChat','TeamsAppInstallation.ReadWriteForTeam','TeamsAppInstallation.ReadWriteForUser','TeamsAppInstallation.ReadWriteSelfForChat',
-        'TeamsAppInstallation.ReadWriteSelfForTeam','TeamsAppInstallation.ReadWriteSelfForUser','TeamSettings.Read.All','TeamSettings.ReadWrite.All','TeamsTab.Create',
-        'TeamsTab.Read.All','TeamsTab.ReadWrite.All','TeamsTab.ReadWriteForChat','TeamsTab.ReadWriteForTeam','TeamsTab.ReadWriteForUser','TeamsTab.ReadWriteSelfForChat',
-        'TeamsTab.ReadWriteSelfForTeam','TeamsTab.ReadWriteSelfForUser','TeamworkDevice.Read.All','TeamworkDevice.ReadWrite.All','TeamworkTag.Read','TeamworkTag.ReadWrite',
-        'TermStore.Read.All','TermStore.ReadWrite.All','ThreatAssessment.ReadWrite.All','ThreatHunting.Read.All','ThreatIndicators.Read.All',
-        'ThreatIndicators.ReadWrite.OwnedBy','ThreatSubmission.Read','ThreatSubmission.Read.All','ThreatSubmission.ReadWrite','ThreatSubmission.ReadWrite.All',
-        'ThreatSubmissionPolicy.ReadWrite.All','TrustFrameworkKeySet.Read.All','TrustFrameworkKeySet.ReadWrite.All','UnifiedGroupMember.Read.AsGuest','User.Export.All',
-        'User.Invite.All','User.ManageIdentities.All','User.Read','User.Read.All','User.ReadBasic.All','User.ReadWrite','User.ReadWrite.All',
-        'UserActivity.ReadWrite.CreatedByApp','UserAuthenticationMethod.Read','UserAuthenticationMethod.Read.All','UserAuthenticationMethod.ReadWrite',
-        'UserAuthenticationMethod.ReadWrite.All','UserNotification.ReadWrite.CreatedByApp','UserTimelineActivity.Write.CreatedByApp','WindowsUpdates.ReadWrite.All',
-        'WorkforceIntegration.Read.All','WorkforceIntegration.ReadWrite.All')]
-        $Scopes,
+        [System.Management.Automation.SwitchParameter]
+        $RemoveAllGrants,
 
         [parameter(
             Mandatory=$false,
             Position=3,
-            ParameterSetName='cleanup'
+            ParameterSetName='scope'
         )]
         [System.Management.Automation.SwitchParameter]
-        $RemoveAllGrants
+        $AddScope
     )
+
+    DynamicParam
+    {
+        $paramDictionary = New-Object -Type System.Management.Automation.RuntimeDefinedParameterDictionary
+        $attributeScope = New-Object System.Management.Automation.ParameterAttribute
+        $attributeScope.ParameterSetName = 'scope'
+        $attributeScope.Position = '2'
+        $attributeScope.Mandatory = $true
+
+        $attributeCollection = New-Object -Type System.Collections.ObjectModel.Collection[System.Attribute]
+        $attributeCollection.Add($attributeScope)
+        # check for required permissions
+        $requiredMGPermissions = @('User.ReadBasic.All','Application.ReadWrite.All','DelegatedPermissionGrant.ReadWrite.All')
+        # get current context
+        $currentMGContext = Get-MgContext
+        if (-not [System.String]::IsNullOrEmpty($currentMGContext))
+        {
+            foreach ($permission in $requiredMGPermissions)
+            {
+                if (-not $currentMGContext.Scopes.Contains($permission))
+                {
+                    Write-Error "Required permission missing:$($permission)"
+                    [System.Boolean]$insufficientPerms = $true
+                }
+            }
+            if ($insufficientPerms)
+            {
+                Write-Warning 'No existing connection. Please connect to MS Graph first! e.g.:Connect-MgGraph -Scopes User.ReadBasic.All,RoleEligibilitySchedule.Read.Directory,RoleAssignmentSchedule.ReadWrite.Directory,RoleManagement.Read.Directory'
+                break
+            }
+        }
+        else
+        {
+            Write-Host -ForegroundColor Yellow 'Connecting to MgGraph...'
+            $null = Connect-MgGraph -Scopes User.ReadBasic.All,RoleEligibilitySchedule.Read.Directory,RoleAssignmentSchedule.ReadWrite.Directory,RoleManagement.Read.Directory
+        }
+
+        # Generate and set the ValidateSet
+        $script:resourceMG = Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0000-c000-000000000000'"
+        $scopeSet = $($script:resourceMG.Oauth2PermissionScopes | Sort-Object -Property Value).Value
+
+        $validateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($scopeSet)
+        $attributeCollection.Add($validateSetAttribute)
+
+        $runtimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter('Scopes', [System.String[]], $attributeCollection)
+        $paramDictionary.Add('Scopes', $runtimeParameter)
+        return $paramDictionary
+
+    }
 
     begin
     {
@@ -7343,7 +7339,7 @@ function global:Set-Oauth2PermissionGrantforMG
                 if (-not [System.String]::IsNullOrEmpty($existingGrants))
                 {
                     # check for matching grants
-                    foreach ($scope in $Scopes)
+                    foreach ($scope in $PSBoundParameters.Scopes)
                     {
                         if ($existingGrants.Scope.Contains($scope))
                         {
@@ -7352,15 +7348,23 @@ function global:Set-Oauth2PermissionGrantforMG
                     }
                 }
 
-                if (-not [System.String]::IsNullOrEmpty($Scopes))
+                if (-not [System.String]::IsNullOrEmpty($PSBoundParameters.Scopes))
                 {
                     $paramsMgOauth2 = @{
                         ResourceId = $resourceMG.Id
-                        Scope = $($Scopes -join " ")
                         ClientId = $servicePrincipal.Id
                         ConsentType = 'Principal'
                         PrincipalId = $userMG.Id
-                        #Verbose = $VerbosePreference
+                    }
+
+                    if ($AddScope)
+                    {
+                        $sanitizedScopes = $($existingGrants.Scope + ' ' + $PSBoundParameters.Scopes -join ' ' ).Trim().Split(' ').Trim() | Select-Object -Unique
+                        $paramsMgOauth2.Add('Scope', $($sanitizedScopes -join ' '))
+                    }
+                    else
+                    {
+                        $paramsMgOauth2.Add('Scope', $($PSBoundParameters.Scopes -join ' '))
                     }
 
                     if ([System.String]::IsNullOrEmpty($existingGrants))
