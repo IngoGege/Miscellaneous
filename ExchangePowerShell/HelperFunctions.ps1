@@ -6392,7 +6392,9 @@ function global:Format-FolderStats
     "Identity",
     "SearchFolder",
     "Diagnostics",
-    "DiagnosticInfo"
+    "DiagnosticInfo",
+    "LastMovedTimeStamp",
+    "Contentmailboxguid"
     )
 
     $cmd = '$FolderStatistics |' + "select $($selectProperties -join ',')"
@@ -7785,3 +7787,7 @@ function global:Get-MgOauth2PermissionScopesOfMG
     $resourceMG.Oauth2PermissionScopes | Sort-Object -Property Value
 }
 
+function global:Get-MgLastDirsyncTime
+{
+    (Get-MgOrganization -Property OnPremisesLastSyncDateTime).OnPremisesLastSyncDateTime
+}
