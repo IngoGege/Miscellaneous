@@ -4022,7 +4022,7 @@ function global:Get-MSGraphTeam
     }
 }
 
-function global:Get-AccessTokenNoLibraries
+function Get-AccessTokenNoLibraries
 {
     <#
         .SYNOPSIS
@@ -4055,19 +4055,20 @@ function global:Get-AccessTokenNoLibraries
         $Authority,
 
         [System.String]
-        [ValidateNotNullOrEmpty()]
         $ClientId,
 
         [System.String]
         $ClientSecret,
 
         [System.Security.Cryptography.X509Certificates.X509Certificate2]
-        $Certificate
+        $Certificate,
+
+        [ValidateSet('https://outlook.office.com/.default','https://graph.microsoft.com/.default')]
+        $Scope = 'https://graph.microsoft.com/.default'
     )
 
     begin
     {
-        $Scope = "https://graph.microsoft.com/.default"
 
         if ($Certificate)
         {
@@ -4185,11 +4186,7 @@ function global:Get-AccessTokenNoLibraries
     process
     {
         try {
-
-            
-
             $accessToken = Invoke-RestMethod @PostSplat
-
         }
         catch{
             $_
@@ -4200,7 +4197,6 @@ function global:Get-AccessTokenNoLibraries
     {
         $accessToken
     }
-
 }
 
 function global:Get-UserRealm
@@ -7459,7 +7455,7 @@ function global:Set-AppRoleAssignmentforMG
         )]
         [System.String[]]
         [ValidateSet("Calendars.Read","Calendars.ReadWrite","Contacts.Read",
-                    "Contacts.ReadWrite","full_access_as_app","IMAP.AccessAsApp",
+                    "Contacts.ReadWrite","Exchange.ManageAsApp","full_access_as_app","IMAP.AccessAsApp",
                     "Mail.Read","Mail.ReadBasic","Mail.ReadBasic.All",
                     "Mail.ReadWrite","Mail.Send","MailboxSettings.Read",
                     "MailboxSettings.ReadWrite","SMTP.SendAsApp")]
@@ -7527,7 +7523,7 @@ function global:Set-AppRoleAssignmentforMG
         # retrieve Exchange Online and Microsoft Graph servicePrincipals
         $MSGraphEXOSPN = Get-MgServicePrincipal -Filter "(AppId eq '00000002-0000-0ff1-ce00-000000000000') or (AppId eq '00000003-0000-0000-c000-000000000000')"
         # extract AppRoles
-        $EXOAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'} ).AppRoles | Where-Object { $_.Value -match "^(full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp)$"}
+        $EXOAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'} ).AppRoles | Where-Object { $_.Value -match "^(Exchange.ManageAsApp|full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp)$"}
         $MSGraphAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000003-0000-0000-c000-000000000000'} ).AppRoles | Where-Object { $_.Value -match 'Mail\.|MailboxSettings\.|Calendars\.|Contacts\.'}
         # get Ids
         $roleDetails = [System.Collections.ArrayList]@()
@@ -7608,7 +7604,7 @@ function global:Set-AppRoleAssignmentforMG
             {
                 # build body
                 # checking for either MS Graph or EXO resource
-                if ($permission.Value -match 'full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp')
+                if ($permission.Value -match 'Exchange.ManageAsApp|full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp')
                 {
                     Write-Verbose "Use EXO as resourceID as following permission is only there available:$($permission.Value)"
                     $resourceID = ($MSGraphEXOSPN | Where-Object {$_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'}).Id
@@ -7791,3 +7787,199 @@ function global:Get-MgLastDirsyncTime
 {
     (Get-MgOrganization -Property OnPremisesLastSyncDateTime).OnPremisesLastSyncDateTime
 }
+
+function global:Get-EXOLegacy
+{
+     <#
+    .SYNOPSIS
+        This function is an example how to use EXO endpoint without usage of the EXOV3 module.
+    .DESCRIPTION
+        This function uses Invoke-WebRequest to retrieve data from EXO.
+    .PARAMETER Identity
+        The parameter Identity is required and usually the primary SMTP address of the object.
+    .PARAMETER CmdLetName
+        The parameter CmdLetName defines the cmdlet to be used. In this example only Get-Mailbox and Get-Recipient is available.
+    .PARAMETER Tenant
+        The parameter Tenant defines either the tenant ID or the name and is needed to construct the URI properly.
+    .PARAMETER AccessToken
+        The parameter AccessToken accepts a previously acquired token with the proper permissions for EXO.
+    .PARAMETER AnchorMailbox
+        The parameter AnchorMailbox is used for performance reasons to set the header X-AnchorMailbox of the request.
+    .EXAMPLE
+        Get-EXOLegacy -Identity MeganB@M365x16362456.onmicrosoft.com -CmdLetName Get-Mailbox -Tenant 13081d...7274fd1 -AccessToken eyJ0e...hZNVhpd20
+    .NOTES
+
+    .LINK
+        https://ingogegenwarth.wordpress.com/
+    #>
+    [CmdletBinding()]
+    Param
+    (
+        [System.String]
+        $Identity,
+
+        [System.String]
+        [ValidateSet('Get-Mailbox','Get-Recipient')]
+        $CmdLetName,
+
+        [System.String]
+        $Tenant,
+
+        [System.String]
+        $AccessToken,
+
+        [System.String]
+        $AnchorMailbox
+    )
+
+    begin
+    {
+        if ([System.String]::IsNullOrEmpty($AnchorMailbox))
+        {
+            $AnchorMailbox = $Identity
+        }
+    }
+
+    process
+    {
+        # build URI
+        $adminUri = 'https://outlook.office365.com/adminapi/beta/' + $Tenant + '/InvokeCommand'
+
+        # buil body
+        $body = @{
+            CmdletInput = @{
+                CmdletName = $CmdLetName
+                Parameters =
+                    @{
+                        Identity = $Identity
+                    }
+            }
+        }
+
+        $paramsReq = @{
+            Body = $(ConvertTo-Json -Depth 4 $body -Compress)
+            Uri = $adminUri
+            Method = 'POST'
+            Headers = @{ Authorization = "Bearer $($AccessToken)";
+                        Accept = 'application/json';
+                        'Accept-Encoding' = 'gzip';
+                        'Accept-Charset' = 'UTF-8';
+                        'X-ResponseFormat' = 'json';
+                        #'X-ResponseFormat' = 'clixml';
+                        'X-SerializationLevel' = 'partial';
+                        #'X-SerializationLevel' = 'Full';
+                        'X-AnchorMailbox' = "UPN:$($AnchorMailbox)"}
+            ContentType = 'application/json'
+            ErrorAction = 'Stop'
+        }
+
+        try
+        {
+            $resp = Invoke-WebRequest @paramsReq
+        }
+        catch{
+            $resp = $_
+        }
+    }
+
+    end
+    {
+        $resp
+    }
+}
+
+function global:Get-EXOREST
+{
+     <#
+    .SYNOPSIS
+        This function is an example how to use EXO endpoint without usage of the EXOV3 module.
+    .DESCRIPTION
+        This function uses Invoke-WebRequest to retrieve data from EXO.
+    .PARAMETER Identity
+        The parameter Identity is required and usually the primary SMTP address of the object.
+    .PARAMETER RecipientType
+        The parameter RecipientType defines the type of recipient. In this example mailbox and recipient is available.
+    .PARAMETER PropertySets
+        The parameter PropertySets defines the propertyset for the request.
+    .PARAMETER Tenant
+        The parameter Tenant defines either the tenant ID or the name and is needed to construct the URI properly.
+    .PARAMETER AccessToken
+        The parameter AccessToken accepts a previously acquired token with the proper permissions for EXO.
+    .PARAMETER AnchorMailbox
+        The parameter AnchorMailbox is used for performance reasons to set the header X-AnchorMailbox of the request.
+    .EXAMPLE
+        Get-EXOREST -Identity MeganB@M365x16362456.onmicrosoft.com -RecipientType Mailbox -PropertySets Archive,Audit -Tenant 13081d...7274fd1 -AccessToken eyJ0e...hZNVhpd20
+    .NOTES
+
+    .LINK
+        https://ingogegenwarth.wordpress.com/
+    #>
+    [CmdletBinding()]
+    Param
+    (
+        [System.String]
+        $Identity,
+
+        [System.String]
+        [ValidateSet('Mailbox','Recipient')]
+        $RecipientType = 'Mailbox',
+
+        [System.String[]]
+        $PropertySets,
+
+        [System.String]
+        $Tenant,
+
+        [System.String]
+        $AccessToken,
+
+        [System.String]
+        $AnchorMailbox
+    )
+
+    begin
+    {
+        if ([System.String]::IsNullOrEmpty($AnchorMailbox))
+        {
+            $AnchorMailbox = $Identity
+        }
+    }
+
+    process
+    {
+        # build URI
+        # encode address to base64
+        $encodedIdentity = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Identity))
+        $adminUri = 'https://outlook.office365.com/adminapi/beta/' + $Tenant + '/' + $RecipientType + "('" + $encodedIdentity + "')?isEncoded=true"
+        if (-not [System.String]::IsNullOrEmpty($PropertySets))
+        {
+            $adminUri = $adminUri + '&PropertySet=' + $($PropertySets -join ",")
+        }
+
+        $paramsReq = @{
+            Uri = $adminUri
+            Method = 'GET'
+            Headers = @{ Authorization = "Bearer $($AccessToken)";
+                        Accept = 'application/json;odata.metadata=minimal';
+                        'Accept-Charset' = 'UTF-8';
+                        'X-AnchorMailbox' = "UPN:$($AnchorMailbox)"}
+            ContentType = 'application/json;odata.metadata=minimal'
+            ErrorAction = 'Stop'
+        }
+
+        try
+        {
+            $resp = Invoke-WebRequest @paramsReq
+        }
+        catch{
+            $resp = $_
+        }
+    }
+
+    end
+    {
+        $resp
+    }
+
+}
+
