@@ -6706,7 +6706,15 @@ function global:Get-AadProvisioningErrors
     if (-not [System.String]::IsNullOrEmpty($User))
     {
         try {
-            (Get-AzureADUser -SearchString $User).ProvisioningErrors | Where-Object -FilterScript {-not [System.String]::IsNullOrEmpty($_.ErrorDetail)} | select Timestamp,ErrorDetail
+            $result = (Get-AzureADUser -SearchString $User).ProvisioningErrors | Where-Object -FilterScript {-not [System.String]::IsNullOrEmpty($_.ErrorDetail)}
+            # if null try to search for contact
+            if ([System.String]::IsNullOrEmpty($result))
+            {
+                Write-Verbose 'No user found. Trying to find MailContact...'
+                $result = (Get-AzureADContact -Filter "proxyAddresses/any(p:p eq 'smtp:$($user)')").ProvisioningErrors | Where-Object -FilterScript {-not [System.String]::IsNullOrEmpty($_.ErrorDetail)}
+            }
+
+            $result | select Timestamp,ErrorDetail
         }
         catch {
             $_
