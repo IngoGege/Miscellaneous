@@ -6539,7 +6539,7 @@ function global:Get-SMTPDNSEntries
 
             # get SPF record
             $spfRecord = Resolve-DnsName -DnsOnly -Type TXT -Name "_spf.$Domain" @paramsDNS
-            if (-not [System.String]::IsNullOrWhiteSpace($spfRecord))
+            if ( (-not [System.String]::IsNullOrWhiteSpace($spfRecord)) -and ( 'TXT' -eq $spfRecord.Type))
             {
                 $spf = $spfRecord  | Where-Object Type -eq 'TXT' | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
             }
