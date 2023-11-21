@@ -2589,6 +2589,8 @@ function global:Get-MSGraphUser
             "signInSessionsValidFromDateTime",
             "skills",
             #"signInActivity",
+            "securityIdentifier",
+            "serviceProvisioningErrors",
             "state",
             "streetAddress",
             "surname",
