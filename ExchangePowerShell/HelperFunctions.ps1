@@ -4024,7 +4024,7 @@ function global:Get-MSGraphTeam
     }
 }
 
-function Get-AccessTokenNoLibraries
+function global:Get-AccessTokenNoLibraries
 {
     <#
         .SYNOPSIS
@@ -6767,43 +6767,6 @@ param(
     return $result
 }
 
-function global:Update-BlockSenderList
-{
-    [CmdLetBinding()]
-    param (
-        [System.String]
-        $CSV = 'C:\temp\BlockList.csv'
-    )
-
-    try
-    {
-        $senderList = Import-Csv -Encoding utf8 -Path $CSV
-        $SenderList01 = $senderList[0..199]
-        $SenderList02 = $senderList[200..380]
-        $SenderList03 = $senderList[381..599]
-
-        $commandRule01 = 'Set-TransportRule -Identity 11e63de1-9b71-41aa-8ddc-4fc61ef2610e -FromAddressMatchesPatterns "' + $($senderList01.SMTPAddress -join '","') + '"'
-        Invoke-Expression $commandRule01
-
-        if (-not [System.String]::IsNullOrEmpty($SenderList02))
-        {
-            Write-Verbose 'Processing rule #2...'
-            $commandRule02 = 'Set-TransportRule -Identity 070bdc77-d095-40df-b8cc-0c6213c13802 -FromAddressMatchesPatterns "' + $($senderList02.SMTPAddress -join '","') + '"'
-            Invoke-Expression $commandRule02
-        }
-        if (-not [System.String]::IsNullOrEmpty($SenderList03))
-        {
-            Write-Verbose 'Processing rule #3...'
-            $commandRule03 = 'Set-TransportRule -Identity e5a656f4-7ec5-4064-84cb-be425214f24b -FromAddressMatchesPatterns "' + $($senderList03.SMTPAddress -join '","') + '"'
-            Invoke-Expression $commandRule03
-        }
-    }
-    catch
-    {
-        $_
-    }
-}
-
 function global:Add-MailboxFolderPermissionRecursive
 {
     [CmdletBinding()]
@@ -6895,19 +6858,46 @@ function global:Remove-MailboxFolderPermissionRecursive
         $User,
 
         [System.String]
-        $FilterFolderPath
+        $FilterFolderPath,
+        
+        [System.String]
+        [ValidateSet('Calendar','Contacts','DeletedItems','Drafts',
+        'Inbox','JunkEmail','Journal','Notes','Outbox','SentItems','Tasks',
+        'All','ManagedCustomFolder','RssSubscriptions','SyncIssues','ConversationHistory',
+        'Personal','RecoverableItems','NonIpmRoot','LegacyArchiveJournals',
+        'Clutter','Archive')]
+        $FolderScope,
+        
+        [System.Management.Automation.SwitchParameter]
+        $IgnoreUser
     )
 
+    $ProgressPreference = 'Continue'
+    [System.Int32]$j = 0
     # get recipient
     $trustee = Get-Recipient -Identity $User -ErrorAction SilentlyContinue
     if ([System.String]::IsNullOrEmpty($trustee))
     {
-        Write-Error "User $($User) couldn't be found!"
-        break
+        if ($IgnoreUser)
+        {
+            Write-Warning "User $($User) not found as trustee, will try to remove permissions!"
+        }
+        else
+        {
+            Write-Error "User $($User) couldn't be found!"
+            break
+        }
     }
 
-    # retrieve folders with scope Inbox
-    $folderSet = Get-MailboxFolderStatistics -Identity $Identity -FolderScope Inbox
+    if (-not [System.String]::IsNullOrEmpty($FolderScope))
+    {
+        # retrieve folders with scope
+        $folderSet = Get-MailboxFolderStatistics -Identity $Identity -FolderScope $FolderScope
+    }
+    else
+    {
+        $folderSet = Get-MailboxFolderStatistics -Identity $Identity 
+    }
 
     if ($FilterFolderPath)
     {
@@ -6932,20 +6922,29 @@ function global:Remove-MailboxFolderPermissionRecursive
             Write-Verbose "Processing folder:$($folder.Name)..."
             $params = @{
                 Identity = $Identity + ":" + $folder.FolderId
-                User = $trustee.Identity
                 ErrorAction = 'Stop'
                 Confirm = $false
+            }
+            
+            if ($IgnoreUser)
+            {
+                $params.Add('User',$User)
+            }
+            else
+            {
+                $params.Add('User',$trustee.Identity)
             }
 
             try
             {
                 Remove-MailboxFolderPermission @params
+                Write-Verbose "Permission for user ($($params.User)) successfully removed!"
             }
             catch
             {
                 if ('UserNotFoundInPermissionEntryException' -eq $_.CategoryInfo.Reason)
                 {
-                     Write-Verbose 'No existing permission for this user to remove...'
+                     Write-Verbose "No existing permission for this user ($($params.User)) to remove..."
                 }
                 else
                 {
@@ -6954,8 +6953,7 @@ function global:Remove-MailboxFolderPermissionRecursive
             }
         }
 
-        $progressParams.Status = "Ready"
-        Write-Progress @progressParams
+        Write-Progress -Completed -Activity "Completed"
     }
 }
 
