@@ -6072,7 +6072,7 @@ function global:Format-CalDiag
         $CalendarDiagnosticObjects
     )
 
-    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,SenderEmailAddress,ResponsibleUserName,ClientIntent,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight,AppointmentState
+    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,SenderEmailAddress,ResponsibleUserName,ClientIntent,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight,AppointmentState,CalendarProcessingSteps,ExceptionalAttendees
 
 }
 
@@ -7989,5 +7989,51 @@ function global:Get-EXOREST
         $resp
     }
 
+}
+
+function global:Get-AvailableMailboxDiagnosticLogs
+{
+     <#
+    .SYNOPSIS
+        This function is intended to retrieve available diagnostics logs.
+    .DESCRIPTION
+        This function retrieves available diagnostic logs for a mailbox to be used in Export-MailboxDiagnosticLogs.
+    .PARAMETER Identity
+        The parameter Identity is required and usually the primary SMTP address of the object.
+    .EXAMPLE
+        Get-AvailableMailboxDiagnosticLogs -Identity adelev@M365x09168441.onmicrosoft.com
+    .NOTES
+
+    .LINK
+        https://ingogegenwarth.wordpress.com/
+    #>
+    
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.String]
+        $Identity
+    )
+    
+    # test for error
+    try {
+        Export-MailboxDiagnosticLogs -Identity $Identity -ComponentName NonExistingComponent -ErrorAction stop
+    }
+    catch {
+        $DiagnosticLogsError = $Error[0]
+        
+        if ('ObjectNotFoundException' -eq $DiagnosticLogsError.CategoryInfo.Reason)
+        {
+            # get available logs from error
+            $DiagnosticLogsError.Exception.Message -match "(?<=Available logs: ').*?(?=\')" | Out-Null
+            [System.String]$AvailableLogs = $Matches.Values[0]
+            $AvailableLogs.Split(',').Trim() | sort
+        }
+        else
+        {
+            # any other error
+            $DiagnosticLogsError.Exception
+        }
+    }
 }
 
