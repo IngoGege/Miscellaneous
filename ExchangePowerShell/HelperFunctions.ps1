@@ -29,6 +29,8 @@ function global:Search-UnifiedLog
             The ResultSize parameter specifies the maximum number of results to return. The default value is 100, maximum is 5,000 (which is the default in this function).
         .PARAMETER Formatted
             The Formatted switch causes attributes that are normally returned as integers (for example, RecordType and Operation) to be formatted as descriptive strings. You don't need to specify a value with this switch.
+        .PARAMETER HighCompleteness
+            The HighCompleteness triggers a more aggressive query.
         .EXAMPLE
             Search-UnifiedLog -StartDate 5/1/2018 -EndDate 5/2/2018
         .NOTES
@@ -73,7 +75,10 @@ function global:Search-UnifiedLog
         $ResultSize = '5000',
 
         [System.Management.Automation.SwitchParameter]
-        $Formatted
+        $Formatted,
+
+        [System.Management.Automation.SwitchParameter]
+        $HighCompleteness
 
     )
 
@@ -123,6 +128,10 @@ function global:Search-UnifiedLog
         if ($Formatted)
         {
             $param.Add('Formatted',$true)
+        }
+        if ($HighCompleteness)
+        {
+            $param.Add('HighCompleteness',$true)
         }
     }
 
@@ -337,8 +346,8 @@ function global:Prompt
     {
         switch ($context.ConnectionUri)
         {
-            'https://outlook.office365.com'                 {$ConnectedTo = 'EXO'}
-            'https://ps.compliance.protection.outlook.com'  {$ConnectedTo = 'SCC'}
+            'https://outlook.office365.com'                     {$ConnectedTo = 'EXO'}
+            { $_ -match 'compliance.protection.outlook.com'}    {$ConnectedTo = 'SCC'}
         }
         $connectString += "Connected to $($ConnectedTo) as $($context.PowerShellCredentials.UserName) IsRpsSession:$($context.IsRpsSession) ExoModuleVersion:$($context.ExoModuleVersion) RoutingHint:$($context.RoutingHint)"
     }
@@ -1551,9 +1560,14 @@ function global:Get-MSGraphGroup
             "displayName",
             "expirationDateTime",
             "groupTypes",
+            #"hasMembersWithLicenseErrors",
             "hideFromAddressLists",
             "hideFromOutlookClients",
             "id",
+            #"isArchived",
+            "isAssignableToRole",
+            "isManagementRestricted",
+            "infoCatalogs",
             "isSubscribedByMail",
             "licenseProcessingState",
             "mail",
@@ -1561,6 +1575,7 @@ function global:Get-MSGraphGroup
             "mailNickname",
             "membershipRule",
             "membershipRuleProcessingState",
+            "membershipRuleProcessingStatus",
             "onPremisesDomainName",
             "onPremisesLastSyncDateTime",
             "onPremisesNetBiosName",
@@ -1580,7 +1595,8 @@ function global:Get-MSGraphGroup
             "unseenConversationsCount",
             "unseenCount",
             "unseenMessagesCount",
-            "visibility")
+            "visibility",
+            "writebackConfiguration")
 
         if ($Filter)
         {
@@ -6072,8 +6088,85 @@ function global:Format-CalDiag
         $CalendarDiagnosticObjects
     )
 
-    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,SenderEmailAddress,ResponsibleUserName,ClientIntent,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight,AppointmentState,CalendarProcessingSteps,ExceptionalAttendees
+    $myAttributes = @( 
+        'OriginalLastModifiedTime',
+        'LastModifiedTime',
+        'OriginalCreationTime',
+        'CreationTime',
+        'CalendarLogTriggerAction',
+        'OriginalClientInfoString',
+        'ClientInfoString',
+        'MeetingRequestType',
+        'ItemClass',
+        'ItemVersion',
+        'ParentDisplayName',
+        'OriginalParentDisplayName',
+        'SenderEmailAddress',
+        'ResponsibleUserName',
+        'ClientIntent',
+        'SubjectProperty',
+        'NormalizedSubject',
+        'DisplayAttendeesAll',
+        'Location',
+        'ReceivedBy',
+        'ReceivedRepresenting',
+        'MapiPRStartDate',
+        'MapiPREndDate',
+        'ViewStartTime',
+        'ViewEndTime',
+        'CleanGlobalObjectId',
+        'Preview',
+        'ChangeHighlight',
+        'AppointmentState',
+        'CalendarProcessingSteps',
+        'ExceptionalAttendees'
+    )
 
+    $myAttributesV2 = @( 
+        'LogTimestamp',
+        'CalendarLogTriggerAction',
+        'LogClientInfoString',
+        'ShortClientInfoString',
+        'MeetingRequestType',
+        'ItemClass',
+        'ItemVersion',
+        'ParentDisplayName',
+        'OriginalParentDisplayName',
+        'SenderEmailAddress',
+        'ResponsibleUserName',
+        'ClientIntent',
+        'SubjectProperty',
+        'Location',
+        'ReceivedBy',
+        'ReceivedRepresenting',
+        'SentRepresentingEmailAddress',
+        'ResponseType',
+        'ResponseState',
+        'OriginalStartDate',
+        'MapiPRStartDate',
+        'MapiPREndDate',
+        'CleanGlobalObjectId',
+        'Preview',
+        'ChangeHighlight',
+        'AppointmentState',
+        'CalendarProcessingSteps',
+        'ExceptionalAttendees',
+        'RecurrencePattern',
+        'IsException',
+        'IsRecurring',
+        'IsResponseRequested',
+        'IsSeriesCancelled',
+        'MapiIsAllDayEvent'
+    )
+    
+    if($CalendarDiagnosticObjects[0] | Get-Member -MemberType NoteProperty -Name LogTimestamp)
+    {
+        $CalendarDiagnosticObjects | Select -Property $myAttributesV2
+    }
+    else
+    {
+        $CalendarDiagnosticObjects | Select -Property $myAttributes
+    }
 }
 
 function global:Get-MSOLUserError
