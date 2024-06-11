@@ -7066,7 +7066,7 @@ function global:Get-AADServicePrincipalEXOReport
         # retrieve Microsoft Graph and Exchange Online servicePrincipals
         $MSGraphEXOSPN = Get-MgServicePrincipal -Filter "(AppId eq '00000002-0000-0ff1-ce00-000000000000') or (AppId eq '00000003-0000-0000-c000-000000000000')"
         # extract AppRoles
-        $AppRoles = $MSGraphEXOSPN.AppRoles | Where-Object { $_.Value -match 'Mail\.|MailboxSettings\.|Calendars\.|Contacts\.|full_access_as_app'} | Sort-Object -Property Value -Unique
+        $AppRoles = $MSGraphEXOSPN.AppRoles | Where-Object { $_.Value -match 'Mail\.|MailboxSettings\.|Calendars\.|Contacts\.|full_access_as_app|IMAP|POP|SMTP'} | Sort-Object -Property Value -Unique
         # retrieve all servicePrincipals
         $AllSPN = Get-MgServicePrincipal -ExpandProperty AppRoleAssignments -All
         Write-Verbose "Found $($AllSPN.Count) serviceprincipals..."
@@ -8128,5 +8128,161 @@ function global:Get-AvailableMailboxDiagnosticLogs
             $DiagnosticLogsError.Exception
         }
     }
+}
+
+function global:Get-ADReplMetadata
+{
+    <#
+        .SYNOPSIS
+            Use the Get-ADReplMetadata to retrieve AD user object changes.
+        .DESCRIPTION
+            The function uses AD PowerShell module to search for AD objects and their changed attributes.
+        .PARAMETER SearchBase
+            Specifies an Active Directory path to search under.
+        .PARAMETER TimeStamp
+            The TimeStamp used when filter for objects changed after (WhenChanged date is compared).
+        .PARAMETER DC
+            The DomainController to use.
+        .PARAMETER ExchangeAttributesOnly
+            The ExchangeAttributesOnly returns only a subset of changed attributes related to Exchange.
+        .PARAMETER Filter
+            The AD filter to use.
+        .EXAMPLE
+            # retrieve all user objects, which have been changed the last 30 minutes
+            Get-ADReplMetadata -TimeStamp (Get-Date).AddMinutes(-30)
+            # retrieve all user objects, which have been changed the last 30 minutes, but returns only values for the following attributes:mail,mailNickname,Member*,proxyAddresses,targetAddresses
+            Get-ADReplMetadata -TimeStamp (Get-Date).AddMinutes(-30) -ExchangeAttributesOnly
+            # retrieve all user objects, which have been changed the last 5 years for a specific user
+            Get-ADReplMetadata -TimeStamp (Get-Date).AddYears(-5) -Filter "cn -eq 'd055705'"
+        .NOTES
+            The function has dependencies to AD PowerShell module and required permission to read AD properties.
+        .LINK
+            https://learn.microsoft.com/powershell/module/activedirectory/get-aduser?view=windowsserver2022-ps&WT.mc_id=M365-MVP-5001727
+            https://learn.microsoft.com/powershell/module/activedirectory/get-adreplicationattributemetadata?view=windowsserver2022-ps&WT.mc_id=M365-MVP-5001727
+    #>
+    [CmdletBinding()]
+    param(
+        [parameter( Position=0)]
+        [System.String]
+        $SearchBase,
+
+        [parameter( Position=1)]
+        [System.DateTime]
+        $TimeStamp,
+
+        [parameter( Position=2)]
+        [System.String]
+        $DC,
+
+        [parameter( Position=3)]
+        [System.Management.Automation.SwitchParameter]
+        $ExchangeAttributesOnly,
+
+        [parameter( Position=4)]
+        [System.String]
+        $Filter
+
+    )
+    
+    $collection = [System.Collections.ArrayList]@()
+    $aDObjectChanged = [System.Collections.ArrayList]@()
+    $ProgressPreference = 'Continue'
+    [System.Int32]$j = '1'
+    # get changed user objects
+    $paramsADUser = @{
+        SearchBase = $SearchBase
+        Server = $DC
+        Verbose = $VerbosePreference
+    }
+    if ($Filter)
+    {
+        $paramsADUser.Add('Filter', "$Filter")
+    }
+    else
+    {
+        $paramsADUser.Add('Filter', {WhenChanged -ge $TimeStamp})
+    }
+
+    $aDObjectChanged = Get-ADObject @paramsADUser
+    if ($Filter)
+    {
+        Write-Host "Found $(($aDObjectChanged | measure).Count) user objects..."
+    }
+    else
+    {
+        Write-Host "Found $(($aDObjectChanged | measure).Count) since $($TimeStamp.ToString()) changed user objects..."
+    }
+
+    if (($aDObjectChanged | measure).Count -gt 0)
+    {
+        # get changed attributes
+        foreach ($user in $aDObjectChanged)
+        {
+            $progressParams = @{
+                Activity = "Processing ADUser - $($user.UserPrincipalName)"
+                PercentComplete = $j / ($aDObjectChanged | measure).count * 100
+                Status = "Remaining: $(($aDObjectChanged | measure).count - $j) out of $(($aDObjectChanged | measure).count)"
+            }
+            Write-Progress @progressParams
+            
+            $paramsMetadata = @{
+                Object = $user.DistinguishedName
+                Server = $DC
+                ShowAllLinkedValues = $true
+                Verbose = $VerbosePreference
+            }
+            
+            if ($ExchangeAttributesOnly)
+            {
+                $paramsMetadata.Add('Filter', "(LastOriginatingChangeTime -gt ""$TimeStamp"")
+                -and ((AttributeName -eq 'mail') -or (AttributeName -eq 'mailNickname')
+                -or (AttributeName -like 'Membe*') -or (AttributeName -eq 'proxyAddresses')
+                -or (AttributeName -eq 'targetAddress')-or (AttributeName -eq 'msExchHideFromAddressLists'))")
+            }
+            else
+            {
+                $paramsMetadata.Add('Filter', "LastOriginatingChangeTime -gt ""$TimeStamp""")
+            }
+
+            $collection += Get-ADReplicationAttributeMetadata @paramsMetadata
+            $j++
+        }
+
+        $progressParams.Status = "Ready"
+        $progressParams.Add('Completed',$true)
+        Write-Progress @progressParams
+
+        # return metadata
+        if ([System.String]::IsNullOrEmpty($collection))
+        {
+            Write-Host 'No changes for given timewindow found...'
+        }
+        else
+        {
+            $collection | Sort-Object LastOriginatingChangeTime
+        }
+    }
+}
+
+function global:Format-ReplMetadata
+{
+    Param (
+        [Parameter( Mandatory=$true, Position=0)]
+        [System.Object[]]
+        $ReplMetadata
+    )
+
+    $myAttributes = @( 
+        'LastOriginatingChangeTime',
+        'AttributeName',
+        'Object',
+        'AttributeValue',
+        'FirstOriginatingCreateTime',
+        'LastOriginatingChangeDirectoryServerIdentity',
+        'LastOriginatingDeleteTime',
+        'Server',
+        'Version'
+    )
+    $ReplMetadata | select LastOriginatingChangeTime,AttributeName,Object,AttributeValue,FirstOriginatingCreateTime,LastOriginatingChangeDirectoryServerIdentity,LastOriginatingDeleteTime,Server,Version
 }
 
