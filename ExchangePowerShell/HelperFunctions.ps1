@@ -2632,6 +2632,7 @@ function global:Get-MSGraphUser
                         else
                         {
                             $URI = 'https://graph.microsoft.com/beta/directory/deletedItems/microsoft.graph.user?$filter='
+                            $URI = $URI + $Filter
                         }
                     }
                     else
