@@ -6125,9 +6125,13 @@ function global:Format-CalDiag
 
     $myAttributesV2 = @( 
         'LogTimestamp',
+        'OriginalLastModifiedTime',
+        'LastModifiedTime',
+        'OriginalCreationTime',
         'CalendarLogTriggerAction',
         'LogClientInfoString',
         'ShortClientInfoString',
+        'OriginalClientInfoString',
         'MeetingRequestType',
         'ItemClass',
         'ItemVersion',
@@ -6137,6 +6141,7 @@ function global:Format-CalDiag
         'ResponsibleUserName',
         'ClientIntent',
         'SubjectProperty',
+        'NormalizedSubject',
         'Location',
         'ReceivedBy',
         'ReceivedRepresenting',
@@ -6157,6 +6162,7 @@ function global:Format-CalDiag
         'IsRecurring',
         'IsResponseRequested',
         'IsSeriesCancelled',
+        'IsSoftDeleted',
         'MapiIsAllDayEvent'
     )
     
