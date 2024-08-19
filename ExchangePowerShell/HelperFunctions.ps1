@@ -7116,10 +7116,7 @@ function global:Get-AADServicePrincipalEXOReport
                     $bool = $true
                 }
             }
-            if ($bool)
-            {
-                return $bool
-            }
+            return $bool
         }
     }
 
