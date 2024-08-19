@@ -6128,10 +6128,12 @@ function global:Format-CalDiag
         'OriginalLastModifiedTime',
         'LastModifiedTime',
         'OriginalCreationTime',
+        'OwnerCriticalChangeTime',
         'CalendarLogTriggerAction',
         'LogClientInfoString',
         'ShortClientInfoString',
         'OriginalClientInfoString',
+        'ClientProcessName',
         'MeetingRequestType',
         'ItemClass',
         'ItemVersion',
@@ -6142,6 +6144,7 @@ function global:Format-CalDiag
         'ClientIntent',
         'SubjectProperty',
         'NormalizedSubject',
+        'DisplayAttendeesAll',
         'Location',
         'ReceivedBy',
         'ReceivedRepresenting',
@@ -6163,7 +6166,12 @@ function global:Format-CalDiag
         'IsResponseRequested',
         'IsSeriesCancelled',
         'IsSoftDeleted',
-        'MapiIsAllDayEvent'
+        'MapiIsAllDayEvent',
+        'MiddleTierProcessName',
+        'ViewStartTime',
+        'ViewEndTime',
+        'CalendarItemType',
+        'TransportMessageHeaders'
     )
     
     if($CalendarDiagnosticObjects[0] | Get-Member -MemberType NoteProperty -Name LogTimestamp)
@@ -7094,25 +7102,25 @@ function global:Get-AADServicePrincipalEXOReport
             param(
                 [Microsoft.Graph.PowerShell.Models.MicrosoftGraphServicePrincipal]
                 $ServicePrincipal,
-
+        
                 [Microsoft.Graph.PowerShell.Models.MicrosoftGraphAppRole[]]
                 $AppRoles
             )
-
+            
+            [System.Boolean]$bool = $false
+            
             foreach ($AppRoleID in $ServicePrincipal.AppRoleAssignments.AppRoleId)
             {
                 if ($AppRoles.Id.Contains($AppRoleID))
                 {
-                    return $true
-                    break
-                }
-                else
-                {
-                    return $false
+                    $bool = $true
                 }
             }
+            if ($bool)
+            {
+                return $bool
+            }
         }
-
     }
 
     process
@@ -8292,4 +8300,24 @@ function global:Format-ReplMetadata
     )
     $ReplMetadata | select LastOriginatingChangeTime,AttributeName,Object,AttributeValue,FirstOriginatingCreateTime,LastOriginatingChangeDirectoryServerIdentity,LastOriginatingDeleteTime,Server,Version
 }
+
+function global:Get-MgserviceProvisioningErrors
+{
+    [CmdLetBinding()]
+    param (
+        [System.String]
+        $User
+    )
+    if (-not [System.String]::IsNullOrEmpty($User))
+    {
+        try {
+            $result = (Get-MgUser -UserId $User -Property serviceProvisioningErrors ).serviceProvisioningErrors
+            $result | select CreatedDateTime,IsResolved,ServiceInstance,@{l='ErrorDetails';e={$_.AdditionalProperties.errorDetail}}
+        }
+        catch {
+            $_
+        }
+    }
+}
+
 
