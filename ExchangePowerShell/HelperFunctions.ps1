@@ -29,8 +29,6 @@ function global:Search-UnifiedLog
             The ResultSize parameter specifies the maximum number of results to return. The default value is 100, maximum is 5,000 (which is the default in this function).
         .PARAMETER Formatted
             The Formatted switch causes attributes that are normally returned as integers (for example, RecordType and Operation) to be formatted as descriptive strings. You don't need to specify a value with this switch.
-        .PARAMETER HighCompleteness
-            The HighCompleteness triggers a more aggressive query.
         .EXAMPLE
             Search-UnifiedLog -StartDate 5/1/2018 -EndDate 5/2/2018
         .NOTES
@@ -75,10 +73,7 @@ function global:Search-UnifiedLog
         $ResultSize = '5000',
 
         [System.Management.Automation.SwitchParameter]
-        $Formatted,
-
-        [System.Management.Automation.SwitchParameter]
-        $HighCompleteness
+        $Formatted
 
     )
 
@@ -128,10 +123,6 @@ function global:Search-UnifiedLog
         if ($Formatted)
         {
             $param.Add('Formatted',$true)
-        }
-        if ($HighCompleteness)
-        {
-            $param.Add('HighCompleteness',$true)
         }
     }
 
@@ -346,8 +337,8 @@ function global:Prompt
     {
         switch ($context.ConnectionUri)
         {
-            'https://outlook.office365.com'                     {$ConnectedTo = 'EXO'}
-            { $_ -match 'compliance.protection.outlook.com'}    {$ConnectedTo = 'SCC'}
+            'https://outlook.office365.com'                 {$ConnectedTo = 'EXO'}
+            'https://ps.compliance.protection.outlook.com'  {$ConnectedTo = 'SCC'}
         }
         $connectString += "Connected to $($ConnectedTo) as $($context.PowerShellCredentials.UserName) IsRpsSession:$($context.IsRpsSession) ExoModuleVersion:$($context.ExoModuleVersion) RoutingHint:$($context.RoutingHint)"
     }
@@ -1560,14 +1551,9 @@ function global:Get-MSGraphGroup
             "displayName",
             "expirationDateTime",
             "groupTypes",
-            #"hasMembersWithLicenseErrors",
             "hideFromAddressLists",
             "hideFromOutlookClients",
             "id",
-            #"isArchived",
-            "isAssignableToRole",
-            "isManagementRestricted",
-            "infoCatalogs",
             "isSubscribedByMail",
             "licenseProcessingState",
             "mail",
@@ -1575,7 +1561,6 @@ function global:Get-MSGraphGroup
             "mailNickname",
             "membershipRule",
             "membershipRuleProcessingState",
-            "membershipRuleProcessingStatus",
             "onPremisesDomainName",
             "onPremisesLastSyncDateTime",
             "onPremisesNetBiosName",
@@ -1595,8 +1580,7 @@ function global:Get-MSGraphGroup
             "unseenConversationsCount",
             "unseenCount",
             "unseenMessagesCount",
-            "visibility",
-            "writebackConfiguration")
+            "visibility")
 
         if ($Filter)
         {
@@ -2605,8 +2589,6 @@ function global:Get-MSGraphUser
             "signInSessionsValidFromDateTime",
             "skills",
             #"signInActivity",
-            "securityIdentifier",
-            "serviceProvisioningErrors",
             "state",
             "streetAddress",
             "surname",
@@ -2632,7 +2614,6 @@ function global:Get-MSGraphUser
                         else
                         {
                             $URI = 'https://graph.microsoft.com/beta/directory/deletedItems/microsoft.graph.user?$filter='
-                            $URI = $URI + $Filter
                         }
                     }
                     else
@@ -4074,20 +4055,19 @@ function global:Get-AccessTokenNoLibraries
         $Authority,
 
         [System.String]
+        [ValidateNotNullOrEmpty()]
         $ClientId,
 
         [System.String]
         $ClientSecret,
 
         [System.Security.Cryptography.X509Certificates.X509Certificate2]
-        $Certificate,
-
-        [ValidateSet('https://outlook.office.com/.default','https://graph.microsoft.com/.default')]
-        $Scope = 'https://graph.microsoft.com/.default'
+        $Certificate
     )
 
     begin
     {
+        $Scope = "https://graph.microsoft.com/.default"
 
         if ($Certificate)
         {
@@ -4205,7 +4185,11 @@ function global:Get-AccessTokenNoLibraries
     process
     {
         try {
+
+            
+
             $accessToken = Invoke-RestMethod @PostSplat
+
         }
         catch{
             $_
@@ -4216,6 +4200,7 @@ function global:Get-AccessTokenNoLibraries
     {
         $accessToken
     }
+
 }
 
 function global:Get-UserRealm
@@ -6089,99 +6074,8 @@ function global:Format-CalDiag
         $CalendarDiagnosticObjects
     )
 
-    $myAttributes = @( 
-        'OriginalLastModifiedTime',
-        'LastModifiedTime',
-        'OriginalCreationTime',
-        'CreationTime',
-        'CalendarLogTriggerAction',
-        'OriginalClientInfoString',
-        'ClientInfoString',
-        'MeetingRequestType',
-        'ItemClass',
-        'ItemVersion',
-        'ParentDisplayName',
-        'OriginalParentDisplayName',
-        'SenderEmailAddress',
-        'ResponsibleUserName',
-        'ClientIntent',
-        'SubjectProperty',
-        'NormalizedSubject',
-        'DisplayAttendeesAll',
-        'Location',
-        'ReceivedBy',
-        'ReceivedRepresenting',
-        'MapiPRStartDate',
-        'MapiPREndDate',
-        'ViewStartTime',
-        'ViewEndTime',
-        'CleanGlobalObjectId',
-        'Preview',
-        'ChangeHighlight',
-        'AppointmentState',
-        'CalendarProcessingSteps',
-        'ExceptionalAttendees'
-    )
+    $CalendarDiagnosticObjects | select OriginalLastModifiedTime,LastModifiedTime,OriginalCreationTime,CreationTime,CalendarLogTriggerAction,OriginalClientInfoString,ClientInfoString,MeetingRequestType,ItemClass,ItemVersion,ParentDisplayName,OriginalParentDisplayName,SenderEmailAddress,ResponsibleUserName,ClientIntent,SubjectProperty,NormalizedSubject,DisplayAttendeesAll,Location,ReceivedBy,ReceivedRepresenting,MapiPRStartDate,MapiPREndDate,ViewStartTime,ViewEndTime,CleanGlobalObjectId,Preview,ChangeHighlight,AppointmentState
 
-    $myAttributesV2 = @( 
-        'LogTimestamp',
-        'OriginalLastModifiedTime',
-        'LastModifiedTime',
-        'OriginalCreationTime',
-        'OwnerCriticalChangeTime',
-        'CalendarLogTriggerAction',
-        'LogClientInfoString',
-        'ShortClientInfoString',
-        'OriginalClientInfoString',
-        'ClientProcessName',
-        'MeetingRequestType',
-        'ItemClass',
-        'ItemVersion',
-        'ParentDisplayName',
-        'OriginalParentDisplayName',
-        'SenderEmailAddress',
-        'ResponsibleUserName',
-        'ClientIntent',
-        'SubjectProperty',
-        'NormalizedSubject',
-        'DisplayAttendeesAll',
-        'Location',
-        'ReceivedBy',
-        'ReceivedRepresenting',
-        'SentRepresentingEmailAddress',
-        'ResponseType',
-        'ResponseState',
-        'OriginalStartDate',
-        'MapiPRStartDate',
-        'MapiPREndDate',
-        'CleanGlobalObjectId',
-        'Preview',
-        'ChangeHighlight',
-        'AppointmentState',
-        'CalendarProcessingSteps',
-        'ExceptionalAttendees',
-        'RecurrencePattern',
-        'IsException',
-        'IsRecurring',
-        'IsResponseRequested',
-        'IsSeriesCancelled',
-        'IsSoftDeleted',
-        'MapiIsAllDayEvent',
-        'MiddleTierProcessName',
-        'ViewStartTime',
-        'ViewEndTime',
-        'CalendarItemType',
-        'TransportMessageHeaders'
-    )
-    
-    if($CalendarDiagnosticObjects[0] | Get-Member -MemberType NoteProperty -Name LogTimestamp)
-    {
-        $CalendarDiagnosticObjects | Select -Property $myAttributesV2
-    }
-    else
-    {
-        $CalendarDiagnosticObjects | Select -Property $myAttributes
-    }
 }
 
 function global:Get-MSOLUserError
@@ -6649,7 +6543,7 @@ function global:Get-SMTPDNSEntries
 
             # get SPF record
             $spfRecord = Resolve-DnsName -DnsOnly -Type TXT -Name "_spf.$Domain" @paramsDNS
-            if ( (-not [System.String]::IsNullOrWhiteSpace($spfRecord)) -and ( 'TXT' -eq $spfRecord.Type))
+            if (-not [System.String]::IsNullOrWhiteSpace($spfRecord))
             {
                 $spf = $spfRecord  | Where-Object Type -eq 'TXT' | select @{l='Record';e={$_.Name +'|TTL='+ $_.TTL + '|' + $_.Strings }}
             }
@@ -6816,15 +6710,7 @@ function global:Get-AadProvisioningErrors
     if (-not [System.String]::IsNullOrEmpty($User))
     {
         try {
-            $result = (Get-AzureADUser -SearchString $User).ProvisioningErrors | Where-Object -FilterScript {-not [System.String]::IsNullOrEmpty($_.ErrorDetail)}
-            # if null try to search for contact
-            if ([System.String]::IsNullOrEmpty($result))
-            {
-                Write-Verbose 'No user found. Trying to find MailContact...'
-                $result = (Get-AzureADContact -Filter "proxyAddresses/any(p:p eq 'smtp:$($user)')").ProvisioningErrors | Where-Object -FilterScript {-not [System.String]::IsNullOrEmpty($_.ErrorDetail)}
-            }
-
-            $result | select Timestamp,ErrorDetail
+            (Get-AzureADUser -SearchString $User).ProvisioningErrors | Where-Object -FilterScript {-not [System.String]::IsNullOrEmpty($_.ErrorDetail)} | select Timestamp,ErrorDetail
         }
         catch {
             $_
@@ -6873,6 +6759,43 @@ param(
     }
 
     return $result
+}
+
+function global:Update-BlockSenderList
+{
+    [CmdLetBinding()]
+    param (
+        [System.String]
+        $CSV = 'C:\temp\BlockList.csv'
+    )
+
+    try
+    {
+        $senderList = Import-Csv -Encoding utf8 -Path $CSV
+        $SenderList01 = $senderList[0..199]
+        $SenderList02 = $senderList[200..380]
+        $SenderList03 = $senderList[381..599]
+
+        $commandRule01 = 'Set-TransportRule -Identity 11e63de1-9b71-41aa-8ddc-4fc61ef2610e -FromAddressMatchesPatterns "' + $($senderList01.SMTPAddress -join '","') + '"'
+        Invoke-Expression $commandRule01
+
+        if (-not [System.String]::IsNullOrEmpty($SenderList02))
+        {
+            Write-Verbose 'Processing rule #2...'
+            $commandRule02 = 'Set-TransportRule -Identity 070bdc77-d095-40df-b8cc-0c6213c13802 -FromAddressMatchesPatterns "' + $($senderList02.SMTPAddress -join '","') + '"'
+            Invoke-Expression $commandRule02
+        }
+        if (-not [System.String]::IsNullOrEmpty($SenderList03))
+        {
+            Write-Verbose 'Processing rule #3...'
+            $commandRule03 = 'Set-TransportRule -Identity e5a656f4-7ec5-4064-84cb-be425214f24b -FromAddressMatchesPatterns "' + $($senderList03.SMTPAddress -join '","') + '"'
+            Invoke-Expression $commandRule03
+        }
+    }
+    catch
+    {
+        $_
+    }
 }
 
 function global:Add-MailboxFolderPermissionRecursive
@@ -6966,46 +6889,19 @@ function global:Remove-MailboxFolderPermissionRecursive
         $User,
 
         [System.String]
-        $FilterFolderPath,
-        
-        [System.String]
-        [ValidateSet('Calendar','Contacts','DeletedItems','Drafts',
-        'Inbox','JunkEmail','Journal','Notes','Outbox','SentItems','Tasks',
-        'All','ManagedCustomFolder','RssSubscriptions','SyncIssues','ConversationHistory',
-        'Personal','RecoverableItems','NonIpmRoot','LegacyArchiveJournals',
-        'Clutter','Archive')]
-        $FolderScope,
-        
-        [System.Management.Automation.SwitchParameter]
-        $IgnoreUser
+        $FilterFolderPath
     )
 
-    $ProgressPreference = 'Continue'
-    [System.Int32]$j = 0
     # get recipient
     $trustee = Get-Recipient -Identity $User -ErrorAction SilentlyContinue
     if ([System.String]::IsNullOrEmpty($trustee))
     {
-        if ($IgnoreUser)
-        {
-            Write-Warning "User $($User) not found as trustee, will try to remove permissions!"
-        }
-        else
-        {
-            Write-Error "User $($User) couldn't be found!"
-            break
-        }
+        Write-Error "User $($User) couldn't be found!"
+        break
     }
 
-    if (-not [System.String]::IsNullOrEmpty($FolderScope))
-    {
-        # retrieve folders with scope
-        $folderSet = Get-MailboxFolderStatistics -Identity $Identity -FolderScope $FolderScope
-    }
-    else
-    {
-        $folderSet = Get-MailboxFolderStatistics -Identity $Identity 
-    }
+    # retrieve folders with scope Inbox
+    $folderSet = Get-MailboxFolderStatistics -Identity $Identity -FolderScope Inbox
 
     if ($FilterFolderPath)
     {
@@ -7030,29 +6926,20 @@ function global:Remove-MailboxFolderPermissionRecursive
             Write-Verbose "Processing folder:$($folder.Name)..."
             $params = @{
                 Identity = $Identity + ":" + $folder.FolderId
+                User = $trustee.Identity
                 ErrorAction = 'Stop'
                 Confirm = $false
-            }
-            
-            if ($IgnoreUser)
-            {
-                $params.Add('User',$User)
-            }
-            else
-            {
-                $params.Add('User',$trustee.Identity)
             }
 
             try
             {
                 Remove-MailboxFolderPermission @params
-                Write-Verbose "Permission for user ($($params.User)) successfully removed!"
             }
             catch
             {
                 if ('UserNotFoundInPermissionEntryException' -eq $_.CategoryInfo.Reason)
                 {
-                     Write-Verbose "No existing permission for this user ($($params.User)) to remove..."
+                     Write-Verbose 'No existing permission for this user to remove...'
                 }
                 else
                 {
@@ -7061,7 +6948,8 @@ function global:Remove-MailboxFolderPermissionRecursive
             }
         }
 
-        Write-Progress -Completed -Activity "Completed"
+        $progressParams.Status = "Ready"
+        Write-Progress @progressParams
     }
 }
 
@@ -7081,7 +6969,7 @@ function global:Get-AADServicePrincipalEXOReport
         # retrieve Microsoft Graph and Exchange Online servicePrincipals
         $MSGraphEXOSPN = Get-MgServicePrincipal -Filter "(AppId eq '00000002-0000-0ff1-ce00-000000000000') or (AppId eq '00000003-0000-0000-c000-000000000000')"
         # extract AppRoles
-        $AppRoles = $MSGraphEXOSPN.AppRoles | Where-Object { $_.Value -match 'Mail\.|MailboxSettings\.|Calendars\.|Contacts\.|full_access_as_app|IMAP|POP|SMTP'} | Sort-Object -Property Value -Unique
+        $AppRoles = $MSGraphEXOSPN.AppRoles | Where-Object { $_.Value -match 'Mail\.|MailboxSettings\.|Calendars\.|Contacts\.|full_access_as_app'} | Sort-Object -Property Value -Unique
         # retrieve all servicePrincipals
         $AllSPN = Get-MgServicePrincipal -ExpandProperty AppRoleAssignments -All
         Write-Verbose "Found $($AllSPN.Count) serviceprincipals..."
@@ -7102,22 +6990,25 @@ function global:Get-AADServicePrincipalEXOReport
             param(
                 [Microsoft.Graph.PowerShell.Models.MicrosoftGraphServicePrincipal]
                 $ServicePrincipal,
-        
+
                 [Microsoft.Graph.PowerShell.Models.MicrosoftGraphAppRole[]]
                 $AppRoles
             )
-            
-            [System.Boolean]$bool = $false
-            
+
             foreach ($AppRoleID in $ServicePrincipal.AppRoleAssignments.AppRoleId)
             {
                 if ($AppRoles.Id.Contains($AppRoleID))
                 {
-                    $bool = $true
+                    return $true
+                    break
+                }
+                else
+                {
+                    return $false
                 }
             }
-            return $bool
         }
+
     }
 
     process
@@ -7568,7 +7459,7 @@ function global:Set-AppRoleAssignmentforMG
         )]
         [System.String[]]
         [ValidateSet("Calendars.Read","Calendars.ReadWrite","Contacts.Read",
-                    "Contacts.ReadWrite","Exchange.ManageAsApp","full_access_as_app","IMAP.AccessAsApp",
+                    "Contacts.ReadWrite","full_access_as_app","IMAP.AccessAsApp",
                     "Mail.Read","Mail.ReadBasic","Mail.ReadBasic.All",
                     "Mail.ReadWrite","Mail.Send","MailboxSettings.Read",
                     "MailboxSettings.ReadWrite","SMTP.SendAsApp")]
@@ -7636,7 +7527,7 @@ function global:Set-AppRoleAssignmentforMG
         # retrieve Exchange Online and Microsoft Graph servicePrincipals
         $MSGraphEXOSPN = Get-MgServicePrincipal -Filter "(AppId eq '00000002-0000-0ff1-ce00-000000000000') or (AppId eq '00000003-0000-0000-c000-000000000000')"
         # extract AppRoles
-        $EXOAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'} ).AppRoles | Where-Object { $_.Value -match "^(Exchange.ManageAsApp|full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp)$"}
+        $EXOAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'} ).AppRoles | Where-Object { $_.Value -match "^(full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp)$"}
         $MSGraphAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000003-0000-0000-c000-000000000000'} ).AppRoles | Where-Object { $_.Value -match 'Mail\.|MailboxSettings\.|Calendars\.|Contacts\.'}
         # get Ids
         $roleDetails = [System.Collections.ArrayList]@()
@@ -7717,7 +7608,7 @@ function global:Set-AppRoleAssignmentforMG
             {
                 # build body
                 # checking for either MS Graph or EXO resource
-                if ($permission.Value -match 'Exchange.ManageAsApp|full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp')
+                if ($permission.Value -match 'full_access_as_app|IMAP.AccessAsApp')
                 {
                     Write-Verbose "Use EXO as resourceID as following permission is only there available:$($permission.Value)"
                     $resourceID = ($MSGraphEXOSPN | Where-Object {$_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'}).Id
@@ -7900,421 +7791,3 @@ function global:Get-MgLastDirsyncTime
 {
     (Get-MgOrganization -Property OnPremisesLastSyncDateTime).OnPremisesLastSyncDateTime
 }
-
-function global:Get-EXOLegacy
-{
-     <#
-    .SYNOPSIS
-        This function is an example how to use EXO endpoint without usage of the EXOV3 module.
-    .DESCRIPTION
-        This function uses Invoke-WebRequest to retrieve data from EXO.
-    .PARAMETER Identity
-        The parameter Identity is required and usually the primary SMTP address of the object.
-    .PARAMETER CmdLetName
-        The parameter CmdLetName defines the cmdlet to be used. In this example only Get-Mailbox and Get-Recipient is available.
-    .PARAMETER Tenant
-        The parameter Tenant defines either the tenant ID or the name and is needed to construct the URI properly.
-    .PARAMETER AccessToken
-        The parameter AccessToken accepts a previously acquired token with the proper permissions for EXO.
-    .PARAMETER AnchorMailbox
-        The parameter AnchorMailbox is used for performance reasons to set the header X-AnchorMailbox of the request.
-    .EXAMPLE
-        Get-EXOLegacy -Identity MeganB@M365x16362456.onmicrosoft.com -CmdLetName Get-Mailbox -Tenant 13081d...7274fd1 -AccessToken eyJ0e...hZNVhpd20
-    .NOTES
-
-    .LINK
-        https://ingogegenwarth.wordpress.com/
-    #>
-    [CmdletBinding()]
-    Param
-    (
-        [System.String]
-        $Identity,
-
-        [System.String]
-        [ValidateSet('Get-Mailbox','Get-Recipient')]
-        $CmdLetName,
-
-        [System.String]
-        $Tenant,
-
-        [System.String]
-        $AccessToken,
-
-        [System.String]
-        $AnchorMailbox
-    )
-
-    begin
-    {
-        if ([System.String]::IsNullOrEmpty($AnchorMailbox))
-        {
-            $AnchorMailbox = $Identity
-        }
-    }
-
-    process
-    {
-        # build URI
-        $adminUri = 'https://outlook.office365.com/adminapi/beta/' + $Tenant + '/InvokeCommand'
-
-        # buil body
-        $body = @{
-            CmdletInput = @{
-                CmdletName = $CmdLetName
-                Parameters =
-                    @{
-                        Identity = $Identity
-                    }
-            }
-        }
-
-        $paramsReq = @{
-            Body = $(ConvertTo-Json -Depth 4 $body -Compress)
-            Uri = $adminUri
-            Method = 'POST'
-            Headers = @{ Authorization = "Bearer $($AccessToken)";
-                        Accept = 'application/json';
-                        'Accept-Encoding' = 'gzip';
-                        'Accept-Charset' = 'UTF-8';
-                        'X-ResponseFormat' = 'json';
-                        #'X-ResponseFormat' = 'clixml';
-                        'X-SerializationLevel' = 'partial';
-                        #'X-SerializationLevel' = 'Full';
-                        'X-AnchorMailbox' = "UPN:$($AnchorMailbox)"}
-            ContentType = 'application/json'
-            ErrorAction = 'Stop'
-        }
-
-        try
-        {
-            $resp = Invoke-WebRequest @paramsReq
-        }
-        catch{
-            $resp = $_
-        }
-    }
-
-    end
-    {
-        $resp
-    }
-}
-
-function global:Get-EXOREST
-{
-     <#
-    .SYNOPSIS
-        This function is an example how to use EXO endpoint without usage of the EXOV3 module.
-    .DESCRIPTION
-        This function uses Invoke-WebRequest to retrieve data from EXO.
-    .PARAMETER Identity
-        The parameter Identity is required and usually the primary SMTP address of the object.
-    .PARAMETER RecipientType
-        The parameter RecipientType defines the type of recipient. In this example mailbox and recipient is available.
-    .PARAMETER PropertySets
-        The parameter PropertySets defines the propertyset for the request.
-    .PARAMETER Tenant
-        The parameter Tenant defines either the tenant ID or the name and is needed to construct the URI properly.
-    .PARAMETER AccessToken
-        The parameter AccessToken accepts a previously acquired token with the proper permissions for EXO.
-    .PARAMETER AnchorMailbox
-        The parameter AnchorMailbox is used for performance reasons to set the header X-AnchorMailbox of the request.
-    .EXAMPLE
-        Get-EXOREST -Identity MeganB@M365x16362456.onmicrosoft.com -RecipientType Mailbox -PropertySets Archive,Audit -Tenant 13081d...7274fd1 -AccessToken eyJ0e...hZNVhpd20
-    .NOTES
-
-    .LINK
-        https://ingogegenwarth.wordpress.com/
-    #>
-    [CmdletBinding()]
-    Param
-    (
-        [System.String]
-        $Identity,
-
-        [System.String]
-        [ValidateSet('Mailbox','Recipient')]
-        $RecipientType = 'Mailbox',
-
-        [System.String[]]
-        $PropertySets,
-
-        [System.String]
-        $Tenant,
-
-        [System.String]
-        $AccessToken,
-
-        [System.String]
-        $AnchorMailbox
-    )
-
-    begin
-    {
-        if ([System.String]::IsNullOrEmpty($AnchorMailbox))
-        {
-            $AnchorMailbox = $Identity
-        }
-    }
-
-    process
-    {
-        # build URI
-        # encode address to base64
-        $encodedIdentity = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Identity))
-        $adminUri = 'https://outlook.office365.com/adminapi/beta/' + $Tenant + '/' + $RecipientType + "('" + $encodedIdentity + "')?isEncoded=true"
-        if (-not [System.String]::IsNullOrEmpty($PropertySets))
-        {
-            $adminUri = $adminUri + '&PropertySet=' + $($PropertySets -join ",")
-        }
-
-        $paramsReq = @{
-            Uri = $adminUri
-            Method = 'GET'
-            Headers = @{ Authorization = "Bearer $($AccessToken)";
-                        Accept = 'application/json;odata.metadata=minimal';
-                        'Accept-Charset' = 'UTF-8';
-                        'X-AnchorMailbox' = "UPN:$($AnchorMailbox)"}
-            ContentType = 'application/json;odata.metadata=minimal'
-            ErrorAction = 'Stop'
-        }
-
-        try
-        {
-            $resp = Invoke-WebRequest @paramsReq
-        }
-        catch{
-            $resp = $_
-        }
-    }
-
-    end
-    {
-        $resp
-    }
-
-}
-
-function global:Get-AvailableMailboxDiagnosticLogs
-{
-     <#
-    .SYNOPSIS
-        This function is intended to retrieve available diagnostics logs.
-    .DESCRIPTION
-        This function retrieves available diagnostic logs for a mailbox to be used in Export-MailboxDiagnosticLogs.
-    .PARAMETER Identity
-        The parameter Identity is required and usually the primary SMTP address of the object.
-    .EXAMPLE
-        Get-AvailableMailboxDiagnosticLogs -Identity adelev@M365x09168441.onmicrosoft.com
-    .NOTES
-
-    .LINK
-        https://ingogegenwarth.wordpress.com/
-    #>
-    
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.String]
-        $Identity
-    )
-    
-    # test for error
-    try {
-        Export-MailboxDiagnosticLogs -Identity $Identity -ComponentName NonExistingComponent -ErrorAction stop
-    }
-    catch {
-        $DiagnosticLogsError = $Error[0]
-        
-        if ('ObjectNotFoundException' -eq $DiagnosticLogsError.CategoryInfo.Reason)
-        {
-            # get available logs from error
-            $DiagnosticLogsError.Exception.Message -match "(?<=Available logs: ').*?(?=\')" | Out-Null
-            [System.String]$AvailableLogs = $Matches.Values[0]
-            $AvailableLogs.Split(',').Trim() | sort
-        }
-        else
-        {
-            # any other error
-            $DiagnosticLogsError.Exception
-        }
-    }
-}
-
-function global:Get-ADReplMetadata
-{
-    <#
-        .SYNOPSIS
-            Use the Get-ADReplMetadata to retrieve AD user object changes.
-        .DESCRIPTION
-            The function uses AD PowerShell module to search for AD objects and their changed attributes.
-        .PARAMETER SearchBase
-            Specifies an Active Directory path to search under.
-        .PARAMETER TimeStamp
-            The TimeStamp used when filter for objects changed after (WhenChanged date is compared).
-        .PARAMETER DC
-            The DomainController to use.
-        .PARAMETER ExchangeAttributesOnly
-            The ExchangeAttributesOnly returns only a subset of changed attributes related to Exchange.
-        .PARAMETER Filter
-            The AD filter to use.
-        .EXAMPLE
-            # retrieve all user objects, which have been changed the last 30 minutes
-            Get-ADReplMetadata -TimeStamp (Get-Date).AddMinutes(-30)
-            # retrieve all user objects, which have been changed the last 30 minutes, but returns only values for the following attributes:mail,mailNickname,Member*,proxyAddresses,targetAddresses
-            Get-ADReplMetadata -TimeStamp (Get-Date).AddMinutes(-30) -ExchangeAttributesOnly
-            # retrieve all user objects, which have been changed the last 5 years for a specific user
-            Get-ADReplMetadata -TimeStamp (Get-Date).AddYears(-5) -Filter "cn -eq 'd055705'"
-        .NOTES
-            The function has dependencies to AD PowerShell module and required permission to read AD properties.
-        .LINK
-            https://learn.microsoft.com/powershell/module/activedirectory/get-aduser?view=windowsserver2022-ps&WT.mc_id=M365-MVP-5001727
-            https://learn.microsoft.com/powershell/module/activedirectory/get-adreplicationattributemetadata?view=windowsserver2022-ps&WT.mc_id=M365-MVP-5001727
-    #>
-    [CmdletBinding()]
-    param(
-        [parameter( Position=0)]
-        [System.String]
-        $SearchBase,
-
-        [parameter( Position=1)]
-        [System.DateTime]
-        $TimeStamp,
-
-        [parameter( Position=2)]
-        [System.String]
-        $DC,
-
-        [parameter( Position=3)]
-        [System.Management.Automation.SwitchParameter]
-        $ExchangeAttributesOnly,
-
-        [parameter( Position=4)]
-        [System.String]
-        $Filter
-
-    )
-    
-    $collection = [System.Collections.ArrayList]@()
-    $aDObjectChanged = [System.Collections.ArrayList]@()
-    $ProgressPreference = 'Continue'
-    [System.Int32]$j = '1'
-    # get changed user objects
-    $paramsADUser = @{
-        SearchBase = $SearchBase
-        Server = $DC
-        Verbose = $VerbosePreference
-    }
-    if ($Filter)
-    {
-        $paramsADUser.Add('Filter', "$Filter")
-    }
-    else
-    {
-        $paramsADUser.Add('Filter', {WhenChanged -ge $TimeStamp})
-    }
-
-    $aDObjectChanged = Get-ADObject @paramsADUser
-    if ($Filter)
-    {
-        Write-Host "Found $(($aDObjectChanged | measure).Count) user objects..."
-    }
-    else
-    {
-        Write-Host "Found $(($aDObjectChanged | measure).Count) since $($TimeStamp.ToString()) changed user objects..."
-    }
-
-    if (($aDObjectChanged | measure).Count -gt 0)
-    {
-        # get changed attributes
-        foreach ($user in $aDObjectChanged)
-        {
-            $progressParams = @{
-                Activity = "Processing ADUser - $($user.UserPrincipalName)"
-                PercentComplete = $j / ($aDObjectChanged | measure).count * 100
-                Status = "Remaining: $(($aDObjectChanged | measure).count - $j) out of $(($aDObjectChanged | measure).count)"
-            }
-            Write-Progress @progressParams
-            
-            $paramsMetadata = @{
-                Object = $user.DistinguishedName
-                Server = $DC
-                ShowAllLinkedValues = $true
-                Verbose = $VerbosePreference
-            }
-            
-            if ($ExchangeAttributesOnly)
-            {
-                $paramsMetadata.Add('Filter', "(LastOriginatingChangeTime -gt ""$TimeStamp"")
-                -and ((AttributeName -eq 'mail') -or (AttributeName -eq 'mailNickname')
-                -or (AttributeName -like 'Membe*') -or (AttributeName -eq 'proxyAddresses')
-                -or (AttributeName -eq 'targetAddress')-or (AttributeName -eq 'msExchHideFromAddressLists'))")
-            }
-            else
-            {
-                $paramsMetadata.Add('Filter', "LastOriginatingChangeTime -gt ""$TimeStamp""")
-            }
-
-            $collection += Get-ADReplicationAttributeMetadata @paramsMetadata
-            $j++
-        }
-
-        $progressParams.Status = "Ready"
-        $progressParams.Add('Completed',$true)
-        Write-Progress @progressParams
-
-        # return metadata
-        if ([System.String]::IsNullOrEmpty($collection))
-        {
-            Write-Host 'No changes for given timewindow found...'
-        }
-        else
-        {
-            $collection | Sort-Object LastOriginatingChangeTime
-        }
-    }
-}
-
-function global:Format-ReplMetadata
-{
-    Param (
-        [Parameter( Mandatory=$true, Position=0)]
-        [System.Object[]]
-        $ReplMetadata
-    )
-
-    $myAttributes = @( 
-        'LastOriginatingChangeTime',
-        'AttributeName',
-        'Object',
-        'AttributeValue',
-        'FirstOriginatingCreateTime',
-        'LastOriginatingChangeDirectoryServerIdentity',
-        'LastOriginatingDeleteTime',
-        'Server',
-        'Version'
-    )
-    $ReplMetadata | select LastOriginatingChangeTime,AttributeName,Object,AttributeValue,FirstOriginatingCreateTime,LastOriginatingChangeDirectoryServerIdentity,LastOriginatingDeleteTime,Server,Version
-}
-
-function global:Get-MgserviceProvisioningErrors
-{
-    [CmdLetBinding()]
-    param (
-        [System.String]
-        $User
-    )
-    if (-not [System.String]::IsNullOrEmpty($User))
-    {
-        try {
-            $result = (Get-MgUser -UserId $User -Property serviceProvisioningErrors ).serviceProvisioningErrors
-            $result | select CreatedDateTime,IsResolved,ServiceInstance,@{l='ErrorDetails';e={$_.AdditionalProperties.errorDetail}}
-        }
-        catch {
-            $_
-        }
-    }
-}
-
-
