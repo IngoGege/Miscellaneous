@@ -8317,4 +8317,46 @@ function global:Get-MgserviceProvisioningErrors
     }
 }
 
+function global:Measure-MessageRate
+{
+    <#
+    .SYNOPSIS
+        This function is intended to calculate the message rate of collected logs per minute or per hour.
+    .DESCRIPTION
+        This function calculates from previously collected message traces (Get-MessageTrace) the message rate per minute or hour.
+    .PARAMETER MessageTrace
+        The parameter MessageTrace is required and used to provide messagetraces.
+    .PARAMETER Hour
+        The switch parameter Hour can be used to get the rate per hour. By default the output is per minute. 
+    .EXAMPLE
+        $MSGTraces = Get-MessageTrace -SenderAddress notification@contoso.com -StartDate (Get-Date).AddHours(-5) -EndDate (Get-Date) -PageSize 5000
+        Measure-MessageRate -MessageTrace $MSGTraces
+    .NOTES
 
+    .LINK
+        https://ingogegenwarth.wordpress.com/
+    #>
+    [CmdletBinding()]
+    param(
+        [System.Object[]]
+        $MessageTrace,
+        
+        [System.Management.Automation.SwitchParameter]
+        $ByHour
+    )
+
+    If ($ByHour)
+    {
+        $timeStampFormat = "yyyy'-'MM'-'dd'T'HH"
+    }
+    Else
+    {
+        $timeStampFormat = "yyyy'-'MM'-'dd'T'HH':'mm"
+    }
+    
+    $MessageTrace |
+        Select-Object @{l='TimeStamp';e={"{0:$timeStampFormat}" -f ($_.Received)}} |
+        Group-Object -Property TimeStamp |
+        Sort-Object -Property Name |
+        Select-Object -Property count,@{'l'='TimeStamp';e={$_.name}}
+}
