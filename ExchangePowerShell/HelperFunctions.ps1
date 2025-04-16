@@ -6133,6 +6133,7 @@ function global:Format-CalDiag
         'LogClientInfoString',
         'ShortClientInfoString',
         'OriginalClientInfoString',
+        'LogRowType',
         'ClientProcessName',
         'MeetingRequestType',
         'ItemClass',
@@ -7580,7 +7581,7 @@ function global:Set-AppRoleAssignmentforMG
                     "Contacts.ReadWrite","Exchange.ManageAsApp","full_access_as_app","IMAP.AccessAsApp",
                     "Mail.Read","Mail.ReadBasic","Mail.ReadBasic.All",
                     "Mail.ReadWrite","Mail.Send","MailboxSettings.Read",
-                    "MailboxSettings.ReadWrite","SMTP.SendAsApp")]
+                    "MailboxSettings.ReadWrite","SMTP.SendAsApp","POP.AccessAsApp")]
         $Roles,
 
         [parameter(
@@ -7645,7 +7646,7 @@ function global:Set-AppRoleAssignmentforMG
         # retrieve Exchange Online and Microsoft Graph servicePrincipals
         $MSGraphEXOSPN = Get-MgServicePrincipal -Filter "(AppId eq '00000002-0000-0ff1-ce00-000000000000') or (AppId eq '00000003-0000-0000-c000-000000000000')"
         # extract AppRoles
-        $EXOAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'} ).AppRoles | Where-Object { $_.Value -match "^(Exchange.ManageAsApp|full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp)$"}
+        $EXOAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'} ).AppRoles | Where-Object { $_.Value -match "^(Exchange.ManageAsApp|full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp|POP.AccessAsApp)$"}
         $MSGraphAppRoles = ( $MSGraphEXOSPN | Where-Object { $_.AppID -eq '00000003-0000-0000-c000-000000000000'} ).AppRoles | Where-Object { $_.Value -match 'Mail\.|MailboxSettings\.|Calendars\.|Contacts\.'}
         # get Ids
         $roleDetails = [System.Collections.ArrayList]@()
@@ -7726,7 +7727,7 @@ function global:Set-AppRoleAssignmentforMG
             {
                 # build body
                 # checking for either MS Graph or EXO resource
-                if ($permission.Value -match 'Exchange.ManageAsApp|full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp')
+                if ($permission.Value -match 'Exchange.ManageAsApp|full_access_as_app|IMAP.AccessAsApp|SMTP.SendAsApp|POP.AccessAsApp')
                 {
                     Write-Verbose "Use EXO as resourceID as following permission is only there available:$($permission.Value)"
                     $resourceID = ($MSGraphEXOSPN | Where-Object {$_.AppID -eq '00000002-0000-0ff1-ce00-000000000000'}).Id
