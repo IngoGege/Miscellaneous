@@ -7908,7 +7908,20 @@ function global:Get-MgOauth2PermissionScopesOfMG
 
 function global:Get-MgLastDirsyncTime
 {
-    (Get-MgOrganization -Property OnPremisesLastSyncDateTime).OnPremisesLastSyncDateTime
+    [CmdletBinding()]
+    param(
+        [System.Management.Automation.SwitchParameter]
+        $OnlyTimeDifference
+    )
+    
+    if ($OnlyTimeDifference)
+    {
+        (New-TimeSpan -End $([System.DateTime]::UtcNow) -Start (Get-MgOrganization -Property OnPremisesLastSyncDateTime).OnPremisesLastSyncDateTime).ToString()
+    }
+    else
+    {
+        (Get-MgOrganization -Property OnPremisesLastSyncDateTime).OnPremisesLastSyncDateTime
+    }
 }
 
 function global:Get-EXOLegacy
