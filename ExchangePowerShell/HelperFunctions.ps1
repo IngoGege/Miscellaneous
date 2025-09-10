@@ -331,6 +331,169 @@ function global:Get-MessageTraceFull
 
 }
 
+function global:Get-MessageTraceFullV2
+{
+    <#
+        .SYNOPSIS
+            Use the Get-MessageTraceFull function to search MessageTrace.
+        .DESCRIPTION
+            This function increases ResultSize to its maximum of 5,000. Use the Get-MessageTraceV2 cmdlet to trace messages as they pass through the cloud-based organization. You can use this cmdlet to search message data. If you run this cmdlet without any parameters, only data from the last 48 hours is returned.
+        .PARAMETER EndDate
+            The EndDate parameter specifies the end date of the date range.
+        .PARAMETER Expression
+            This parameter is reserved for internal Microsoft use.
+        .PARAMETER FromIP
+            The FromIP parameter filters the results by the source IP address. For incoming messages, the value of FromIP is the public IP address of the SMTP email server that sent the message. For outgoing messages from Exchange Online, the value is blank.
+        .PARAMETER MessageId
+            The MessageId parameter filters the results by the Message-ID header field of the message. This value is also known as the Client ID. The format of the Message-ID depends on the messaging server that sent the message. The value should be unique for each message. However, not all messaging servers create values for the Message-ID in the same way. Be sure to include the full Message ID string (which may include angle brackets) and enclose the value in quotation marks (for example, "d9683b4c-127b-413a-ae2e-fa7dfb32c69d@DM3NAM06BG401.Eop-nam06.prod.protection.outlook.com").
+        .PARAMETER MessageTraceId
+            The MessageTraceId parameter can be used with the recipient address to uniquely identify a message trace and obtain more details. A message trace ID is generated for every message that's processed by the system.
+        .PARAMETER RecipientAddress
+            The RecipientAddress parameter filters the results by the recipient's email address. You can specify multiple values separated by commas.
+        .PARAMETER SenderAddress
+            The SenderAddress parameter filters the results by the sender's email address. You can specify multiple values separated by commas.
+        .PARAMETER StartDate
+            The StartDate parameter specifies the start date of the date range.
+        .PARAMETER Status
+            The Status parameter filters the results by the delivery status of the message.
+        .PARAMETER ToIP
+            The ToIP parameter filters the results by the destination IP address. For outgoing messages, the value of ToIP is the public IP address in the resolved MX record for the destination domain. For incoming messages to Exchange Online, the value is blank.
+        .PARAMETER Subject
+            The Subject parameter filters the results by the Subject of the message.
+        .PARAMETER SubjectFilterType
+            The SubjectFilterType parameter filters the results by the subject and uses the filtertype 'Contains','EndsWith','StartsWith' for the subject of the message.
+        .EXAMPLE
+            Get-MessageTraceFullV2 -SenderAddress john@contoso.com -StartDate 06/13/2018 -EndDate 06/15/2018
+        .NOTES
+            The function uses the Cmdlet Get-MessageTraceV2 and is doing paging for you in order to retrieve up to the maximum of the cmdlet (whatever this is...).
+        .LINK
+            https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/get-messagetracev2?view=exchange-ps&WT.mc_id=M365-MVP-5001727
+    #>
+    [CmdletBinding()]
+    param(
+        [System.DateTime]
+        $EndDate,
+
+        [System.String]
+        $FromIP,
+
+        [System.String[]]
+        $MessageId,
+
+        [System.GUID]
+        $MessageTraceId,
+
+        [System.String[]]
+        $RecipientAddress,
+
+        [System.String[]]
+        $SenderAddress,
+
+        [System.DateTime]
+        $StartDate,
+
+        [System.String[]]
+        [ValidateSet('None', 'GettingStatus', 'Failed', 'Pending', 'Delivered', 'Expanded', 'Quarantined', 'FilteredAsSpam')]
+        $Status,
+
+        [System.String]
+        $ToIP,
+
+        [System.String]
+        $Subject,
+
+        [System.String]
+        [ValidateSet('Contains','EndsWith','StartsWith')]
+        $SubjectFilterType
+
+    )
+
+    begin
+    {
+        $collection = [System.Collections.ArrayList]@()
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        [System.Boolean]$haveMore = $true
+        $param = @{
+            ResultSize = '5000'
+        }
+
+        if (-not [System.String]::IsNullOrEmpty($EndDate))
+        {
+            $param.Add('EndDate',$EndDate)
+        }
+        if (-not [System.String]::IsNullOrEmpty($FromIP))
+        {
+            $param.Add('FromIP',$FromIP)
+        }
+        if (-not [System.String]::IsNullOrEmpty($MessageId))
+        {
+            $param.Add('MessageId',$MessageId)
+        }
+        if (-not [System.String]::IsNullOrEmpty($MessageTraceId))
+        {
+            $param.Add('MessageTraceId',$MessageTraceId)
+        }
+        if (-not [System.String]::IsNullOrEmpty($RecipientAddress))
+        {
+            $param.Add('RecipientAddress',$RecipientAddress)
+        }
+        if (-not [System.String]::IsNullOrEmpty($SenderAddress))
+        {
+            $param.Add('SenderAddress',$SenderAddress)
+        }
+        if (-not [System.String]::IsNullOrEmpty($StartDate))
+        {
+            $param.Add('StartDate',$StartDate)
+        }
+        if (-not [System.String]::IsNullOrEmpty($Status))
+        {
+            $param.Add('Status',$Status)
+        }
+        if (-not [System.String]::IsNullOrEmpty($ToIP))
+        {
+            $param.Add('ToIP',$ToIP)
+        }
+        if (-not [System.String]::IsNullOrEmpty($Subject))
+        {
+            $param.Add('Subject',$Subject)
+        }
+        if (-not [System.String]::IsNullOrEmpty($SubjectFilterType))
+        {
+            $param.Add('SubjectFilterType',$SubjectFilterType)
+        }
+
+    }
+
+    process
+    {
+        while ($haveMore)
+        {
+            $tempResult = $null
+            $tempResult = Get-MessageTraceV2 @param
+            $collection += $tempResult
+            Write-Verbose "TotalCount:$($collection.Count) Runtime:$($timer.Elapsed.ToString()) ResultCount:$($tempResult.Count)"
+
+            if ($tempResult.Count -eq $ResultSize)
+            {
+                Write-Verbose "More messages to be fetched..."
+                $param.EndDate = $tempResult[-1].Received.ToString('O')
+                $param.Add('StartingRecipientAddress',$tempResult[-1].RecipientAddress)
+            }
+            else
+            {
+                $haveMore = $false
+            }
+        }
+    }
+
+    end
+    {
+        $collection | Sort-Object Received
+        $timer.Stop()
+        Write-Verbose "ScriptRuntime:$($timer.Elapsed.ToString())"
+    }
+}
+
 function global:Prompt
 {
     <#
