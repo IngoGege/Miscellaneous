@@ -473,11 +473,18 @@ function global:Get-MessageTraceFullV2
             $collection += $tempResult
             Write-Verbose "TotalCount:$($collection.Count) Runtime:$($timer.Elapsed.ToString()) ResultCount:$($tempResult.Count)"
 
-            if ($tempResult.Count -eq $ResultSize)
+            if ($tempResult.Count -eq $param.ResultSize)
             {
                 Write-Verbose "More messages to be fetched..."
                 $param.EndDate = $tempResult[-1].Received.ToString('O')
-                $param.Add('StartingRecipientAddress',$tempResult[-1].RecipientAddress)
+                if ([System.String]::IsNullOrEmpty($param.StartingRecipientAddress))
+                {
+                    $param.Add('StartingRecipientAddress',$tempResult[-1].RecipientAddress)
+                }
+                else
+                {
+                    $param.StartingRecipientAddress = $tempResult[-1].RecipientAddress
+                }
             }
             else
             {
