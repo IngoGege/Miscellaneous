@@ -8320,7 +8320,8 @@ function global:Get-AvailableMailboxDiagnosticLogs
     catch {
         $DiagnosticLogsError = $Error[0]
         
-        if ('ObjectNotFoundException' -eq $DiagnosticLogsError.CategoryInfo.Reason)
+        #if ('ObjectNotFoundException' -eq $DiagnosticLogsError.CategoryInfo.Reason)
+        if ('NotSpecified' -eq $DiagnosticLogsError.CategoryInfo.Category)
         {
             # get available logs from error
             $DiagnosticLogsError.Exception.Message -match "(?<=Available logs: ').*?(?=\')" | Out-Null
