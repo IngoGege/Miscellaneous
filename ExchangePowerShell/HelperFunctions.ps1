@@ -566,7 +566,7 @@ function global:Get-ManagedFolderAssistantLog
             Write-Verbose "Processing $($ID)..."
             $tempCollection = [System.Collections.SortedList]::new()
             ([xml](Export-MailboxDiagnosticLogs -Identity $Id -ExtendedProperties).MailboxLog).Properties.MailboxTable.Property |
-                Where-Object -FilterScript {$_.Name -match '^(ElcFai|ELCJob|ElcLast|IsELC)'} |
+                Where-Object -FilterScript {$_.Name -match '^(Elc|IsELC|ELc)'} |
                 foreach {$tempCollection.Add($_.Name,$_.Value)}
             $data = New-Object -TypeName PSObject
             $data | add-member -type NoteProperty -Name Identity -Value $ID
