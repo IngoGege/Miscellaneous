@@ -335,7 +335,7 @@ function global:Get-MessageTraceFullV2
 {
     <#
         .SYNOPSIS
-            Use the Get-MessageTraceFull function to search MessageTrace.
+            Use the Get-MessageTraceFull function to search MessageTr   ace.
         .DESCRIPTION
             This function increases ResultSize to its maximum of 5,000. Use the Get-MessageTraceV2 cmdlet to trace messages as they pass through the cloud-based organization. You can use this cmdlet to search message data. If you run this cmdlet without any parameters, only data from the last 48 hours is returned.
         .PARAMETER EndDate
@@ -564,9 +564,13 @@ function global:Get-ManagedFolderAssistantLog
         foreach ($ID in $Identity)
         {
             Write-Verbose "Processing $($ID)..."
+            $tempCollection = [System.Collections.SortedList]::new()
+            ([xml](Export-MailboxDiagnosticLogs -Identity $Id -ExtendedProperties).MailboxLog).Properties.MailboxTable.Property |
+                Where-Object -FilterScript {$_.Name -match '^(ElcFai|ELCJob|ElcLast|IsELC)'} |
+                foreach {$tempCollection.Add($_.Name,$_.Value)}
             $data = New-Object -TypeName PSObject
             $data | add-member -type NoteProperty -Name Identity -Value $ID
-            $data | add-member -type NoteProperty -Name Ecl -Value $(([xml](Export-MailboxDiagnosticLogs -Identity $ID -ExtendedProperties).MailboxLog).Properties.MailboxTable.Property | ? name -match 'elc' | ? name -NotMatch 'funnel')
+            $data | add-member -type NoteProperty -Name Ecl -Value $tempCollection
             $collection.Add($data) | Out-Null
         }
     }
