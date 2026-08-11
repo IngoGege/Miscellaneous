@@ -541,7 +541,7 @@ function global:Get-ManagedFolderAssistantLog
         .PARAMETER Identity
             The Identity parameter specifies that mailbox that contains the diagnostics logs that you want to view. You can use any value that uniquely identifies the mailbox.
         .EXAMPLE
-            Get-ManagedFolderAssistantLog -Identity ingo@bla.com | Select-Object -ExpandProperty ecl
+            Get-ManagedFolderAssistantLog -Identity ingo@bla.com | Select-Object -ExpandProperty elc
         .LINK
             https://docs.microsoft.com/powershell/module/exchange/export-mailboxdiagnosticlogs?view=exchange-ps
             https://ingogegenwarth.wordpress.com/2017/11/20/advanced-cal/
@@ -570,7 +570,7 @@ function global:Get-ManagedFolderAssistantLog
                 foreach {$tempCollection.Add($_.Name,$_.Value)}
             $data = New-Object -TypeName PSObject
             $data | add-member -type NoteProperty -Name Identity -Value $ID
-            $data | add-member -type NoteProperty -Name Ecl -Value $tempCollection
+            $data | add-member -type NoteProperty -Name Elc -Value $tempCollection
             $collection.Add($data) | Out-Null
         }
     }
