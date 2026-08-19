@@ -8558,3 +8558,25 @@ function global:Measure-MessageRate
         Sort-Object -Property Name |
         Select-Object -Property count,@{'l'='TimeStamp';e={$_.name}}
 }
+
+function global:Get-MailboxStats
+{
+    param(
+        [System.String]
+        $Identity,
+        
+        [System.Management.Automation.SwitchParameter]
+        $Archive
+    )
+    
+    $paramStats = @{
+        Identity = $Identity
+        UseCustomRouting = $true
+    }
+    if ($Archive)
+    {
+        $paramStats.Add('Archive',$true)
+    }
+
+    Get-MailboxStatistics @paramStats  | select TotalItemSize,TotalDeletedItemSize,ItemCount,DeletedItemCount
+}
