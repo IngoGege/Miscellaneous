@@ -7753,7 +7753,7 @@ function global:Set-AppRoleAssignmentforMG
         [System.String[]]
         [ValidateSet("Calendars.Read","Calendars.ReadWrite","Contacts.Read",
                     "Contacts.ReadWrite","Exchange.ManageAsApp","full_access_as_app","IMAP.AccessAsApp",
-                    "Mail.Read","Mail.ReadBasic","Mail.ReadBasic.All",
+                    "Mail.Read","Mail.ReadBasic","Mail.ReadBasic.All","Calendars.ReadBasic.All",
                     "Mail.ReadWrite","Mail.Send","MailboxSettings.Read",
                     "MailboxSettings.ReadWrite","SMTP.SendAsApp","POP.AccessAsApp")]
         $Roles,
